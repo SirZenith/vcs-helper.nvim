@@ -1,5 +1,5 @@
-local line_range = require "vcs-helper.line_range"
-local buf_op = require "vcs-helper.buf_op"
+local line_range = require "line_range"
+local buf_op = require "buf_op"
 
 local LineRangeConditioin = line_range.LineRangeCondition
 
