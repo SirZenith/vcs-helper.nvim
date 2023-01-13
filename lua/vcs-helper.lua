@@ -1,294 +1,76 @@
-local line_range = require "line_range"
-local buf_op = require "buf_op"
+local systems = require "vcs-helper.systems"
+local buf_op = require "vcs-helper.buf_op"
 
-local LineRangeConditioin = line_range.LineRangeCondition
+local DiffType = systems.DiffType
 
 local diff_panel_namespace = "vschelper.diff"
 local diff_panel_old_name = diff_panel_namespace .. ".old"
 local diff_panel_new_name = diff_panel_namespace .. ".new"
 
-local function starts_with(s, prefix)
-    local len_s = #s
-    local len_prefix = #prefix
-    if len_s < len_prefix then
-        return false
-    end
-    return s:sub(1, len_prefix) == prefix
-end
+local DIFF_FILE_TYPE = "vcs-helper-diff"
 
----@enum Header
-local Header = {
-    old_file = "---",
-    new_file = "+++",
-    hunk = "@@"
-}
+local M = {}
 
----@enum LinePrefix
-local LinePrefix = {
-    old = "-",
-    new = "+",
-    common = " "
-}
+M.augroup_id = nil
+M.buf_old = nil
+M.buf_new = nil
 
----@enum DiffType
-local DiffType = {
-    none = "DiffNone",
-    common = "DiffCommon",
-    delete = "DiffDelete",
-    insert = "DiffInsert",
-    change = "DiffChange",
-}
-
-local HEADER_OLD_FILE_PATT = "%-%-%- (.+)\t?"
-local HEADER_NEW_FILE_PATT = "%+%+%+ (.+)\t?"
-local HEADER_HUNK_PATT = "@@ %-(%d-),(%d-) %+(%d-),(%d-) @@"
-
-local file_diff_range_cond = LineRangeConditioin:new(
-    function(lines, index)
-        return starts_with(lines[index], Header.old_file)
-            and index < #lines
-            and starts_with(lines[index + 1], Header.new_file)
-    end,
-    function(lines, index, st)
-        if index <= st then return false end
-
-        if index == #lines then
-            return true
-        else
-            return starts_with(lines[index + 1], Header.old_file)
-        end
-    end
-)
-
-local hunk_diff_range_cond = LineRangeConditioin:new(
-    function(lines, index)
-        return index < #lines
-            and lines[index]:match(HEADER_HUNK_PATT) ~= nil
-    end,
-    function(lines, index, st)
-        if index <= st then return false end
-
-        if index == #lines then
-            return true
-        else
-            return lines[index + 1]:match(HEADER_HUNK_PATT) ~= nil
-        end
-    end
-)
-
--- -----------------------------------------------------------------------------
-
-local function add_diff_record(record, index, buffer_old, buffer_new)
-    local len_old, len_new = #buffer_old, #buffer_new
-    if len_old == 0 and len_new == 0 then
-        return false
-    end
-
-    local smaller = math.min(len_old, len_new)
-    if smaller > 0 then
-        local old, new = {}, {}
-        for i = 1, smaller do
-            old[#old + 1] = buffer_old[i]
-            new[#new + 1] = buffer_new[i]
-        end
-
-        record[#record + 1] = {
-            line = index, type = DiffType.change,
-            old = old, new = new
-        }
-    end
-
-    local delete_st = smaller + 1
-    if delete_st <= len_old then
-        local old, new = {}, {}
-        for i = delete_st, len_old do
-            old[#old + 1] = buffer_old[i]
-            new[#new + 1] = ""
-        end
-
-        record[#record + 1] = {
-            line = index + smaller, type = DiffType.delete,
-            old = old, new = {}
-        }
-    end
-
-    local insert_st = smaller + 1
-    if insert_st <= len_new then
-        local old, new = {}, {}
-        for i = insert_st, len_new do
-            old[#old + 1] = ""
-            new[#new + 1] = buffer_new[i]
-        end
-
-        record[#record + 1] = {
-            line = index + smaller, type = DiffType.insert,
-            old = old, new = new,
-        }
-    end
-
-    return true
-end
-
-local function parse_diff_hunk(diff_lines, st, ed)
-    local _, _, new_st, _ = diff_lines[st]:match(HEADER_HUNK_PATT)
-
-    local diff_record = {}
-    local buffer_old, buffer_new = {}, {}
-
-    local last_common_index = new_st
-    local new_offset = 0
-
-    for index = 1, ed - st + 1 do
-        local line = diff_lines[st + 1 + index]
-        local sign = line:sub(1, 1)
-
-        if sign == LinePrefix.old then
-            buffer_old[#buffer_old + 1] = line:sub(2)
-        elseif sign == LinePrefix.new then
-            new_offset = new_offset + 1
-            buffer_new[#buffer_new + 1] = line:sub(2)
-        elseif sign == LinePrefix.common then
-            if add_diff_record(
-                diff_record, last_common_index + 1,
-                buffer_old, buffer_new
-            ) then
-                buffer_old, buffer_new = {}, {}
-            end
-
-            new_offset = new_offset + 1
-            last_common_index = new_st + new_offset
-        else
-            break
-        end
-    end
-
-    return diff_record
-end
-
----@param header_line string
-local function get_file_path(header_line)
-    local prefixed_path = header_line:match(HEADER_NEW_FILE_PATT)
-    for i = 1, #prefixed_path do
-        if prefixed_path:sub(i, i) == "/" then
-            prefixed_path = prefixed_path:sub(i + 1)
-            break
-        end
-    end
-    return prefixed_path
-end
-
----@param diff_lines string[]
----@param st integer
----@param ed integer
-local function parse_diff_file(diff_lines, st, ed)
-    local len = #diff_lines
-    ed = ed <= len and ed or len
-
-    local filename = get_file_path(diff_lines[st + 1])
-    local diff_records = {}
-
-    local index = st + 2
-    while index <= ed do
-        local s, e = hunk_diff_range_cond:get_line_range(diff_lines, index)
-        if not (s and e) then break end
-
-        local record = parse_diff_hunk(diff_lines, s, e)
-        for _, r in ipairs(record) do
-            diff_records[#diff_records + 1] = r
-        end
-
-        index = e + 1
-    end
-
-    return filename, diff_records
-end
-
----@param diff_lines string[]
-local function parse_diff(diff_lines)
-    local len, index = #diff_lines, 1
-    local diff_record = {}
-
-    while index <= len do
-        local st, ed = file_diff_range_cond:get_line_range(diff_lines, index)
-        if not (st and ed) then break end
-
-        local filename, records = parse_diff_file(diff_lines, st, ed)
-        diff_record[filename] = records
-
-        index = ed + 1
-    end
-
-    return diff_record
-end
-
-local function make_compare_lines(filename, records)
+---@param filename string
+---@return string[]?
+---@return string? err
+local function read_file_lines(filename)
     local lines = {}
-    local file, err = io.open(filename, "r")
+    local full_path = systems.root_dir .. "/" .. filename
+    local file, err = io.open(full_path, "r")
     if not file then
-        return nil, nil, err
+        return nil, err
     end
 
     for line in file:lines() do
         lines[#lines + 1] = line
     end
 
-    local old, new = {}, {}
-    local line_input_index = 1
-    for _, record in ipairs(records) do
-        local linenumber = record.line
-
-        for i = line_input_index, linenumber - 1 do
-            local line = lines[i]
-            old[#old + 1] = line
-            new[#new + 1] = line
-        end
-
-        local buffer_old = record.old or {}
-        local buffer_new = record.new or {}
-        local larger = math.max(#buffer_old, #buffer_new)
-
-        for i = 1, larger do
-            old[#old + 1] = buffer_old[i] or ""
-            new[#new + 1] = buffer_new[i] or ""
-        end
-
-        line_input_index = linenumber + #buffer_new
-    end
-
-    for i = line_input_index, #lines do
-        local line = lines[i]
-        old[#old + 1] = line
-        new[#new + 1] = line
-    end
-
-    return old, new
+    return lines
 end
 
-local function write_diff_record_to_buf(buf_old, buf_new, filename, records)
+---@param lines string[]
+---@param st integer
+---@param ed integer
+---@param buf_old integer
+---@param buf_new integer
+local function read_common_lines(lines, st, ed, buf_old, buf_new)
+    if ed < st then return end
+
+    local buffer = {}
+    for i = st, ed do
+        buffer[#buffer + 1] = lines[i]
+    end
+    buf_op.append_to_buf_with_highlight(buf_old, DiffType.common, buffer)
+    buf_op.append_to_buf_with_highlight(buf_new, DiffType.common, buffer)
+end
+
+---@param filename string
+---@param records DiffRecord[]
+---@param buf_old integer
+---@param buf_new integer
+local function write_diff_record_to_buf(filename, records, buf_old, buf_new)
+    vim.bo[buf_old].modifiable = true
+    vim.bo[buf_new].modifiable = true
+
     vim.api.nvim_buf_set_lines(buf_old, 0, -1, true, {})
     vim.api.nvim_buf_set_lines(buf_new, 0, -1, true, {})
 
-    local lines = {}
-    local file, err = io.open(filename, "r")
-    if not file then
-        return err
+    local lines, err = read_file_lines(filename)
+    if not lines then
+        vim.notify(err)
+        return
     end
 
-    for line in file:lines() do
-        lines[#lines + 1] = line
-    end
-
-    local buffer
     local line_input_index = 1
     for _, record in ipairs(records) do
         local linenumber = record.line
 
-        buffer = {}
-        for i = line_input_index, linenumber - 1 do
-            buffer[#buffer + 1] = lines[i]
-        end
-        buf_op.append_to_buf_with_highlight(buf_old, DiffType.common, buffer)
-        buf_op.append_to_buf_with_highlight(buf_new, DiffType.common, buffer)
+        read_common_lines(lines, line_input_index, linenumber - 1, buf_old, buf_new)
 
         local buffer_new = record.new
         local buffer_old = record.old
@@ -309,33 +91,28 @@ local function write_diff_record_to_buf(buf_old, buf_new, filename, records)
         line_input_index = linenumber + #buffer_new
     end
 
-    buffer = {}
-    for i = line_input_index, #lines do
-        buffer[#buffer + 1] = lines[i]
-    end
-    buf_op.append_to_buf_with_highlight(buf_old, DiffType.common, buffer)
-    buf_op.append_to_buf_with_highlight(buf_new, DiffType.common, buffer)
+    read_common_lines(lines, line_input_index, #lines, buf_old, buf_new)
+
+    vim.bo[buf_old].modifiable = false
+    vim.bo[buf_new].modifiable = false
 end
 
-local function get_diff(data)
-    local filename = data.args
-    if not filename then
-        return
-    end
-
-    local diff = vim.fn.system("git diff ..")
-    local diff_lines = vim.split(diff, "\n")
-
-    local record_map = parse_diff(diff_lines)
-
+---@return integer? buf_old
+---@return integer? buf_new
+local function open_diff_panel()
     local buf_old, win_old = buf_op.find_or_create_buf_with_name(diff_panel_old_name, false, true)
     local buf_new, win_new = buf_op.find_or_create_buf_with_name(diff_panel_new_name, false, true)
     if not (buf_old and buf_new) then
-        error("failed to create buf for diff content.")
+        return nil, nil
     end
 
-    vim.bo[buf_old].buftype = "nofile"
-    vim.bo[buf_new].buftype = "nofile"
+    M.buf_old, M.buf_new = buf_old, buf_new
+
+    for _, buf in ipairs { buf_old, buf_new } do
+        local opt = vim.bo[buf]
+        opt.buftype = "nofile"
+        opt.filetype = DIFF_FILE_TYPE
+    end
 
     if not (win_old and win_new) then
         vim.cmd "tabnew"
@@ -347,24 +124,78 @@ local function get_diff(data)
         vim.api.nvim_win_set_buf(win_new, buf_new)
     end
 
-    vim.bo[buf_old].modifiable = true
-    vim.bo[buf_new].modifiable = true
+    return buf_old, buf_new
+end
 
+local function get_diff(data)
+    local filename = data.args
+    if not filename then return end
+
+    local record_map = systems.parse_diff()
     local records = record_map[filename]
     if not records then
+        vim.notify("no diff info found for file: " .. filename)
         return
     end
 
-    local err = write_diff_record_to_buf(buf_old, buf_new, "../" .. filename, records)
-    if err then
-        print(err)
+    local buf_old, buf_new = open_diff_panel()
+    if not (buf_old and buf_new) then
+        vim.notify("failed to create buf for diff content.")
+        return
     end
 
-    vim.bo[buf_old].modifiable = false
-    vim.bo[buf_new].modifiable = false
+    -- local err = write_diff_record_to_buf(filename, records, buf_old, buf_new)
+    -- if err then vim.notify(err) end
+    vim.api.nvim_buf_set_lines(buf_old, 0, -1, true, vim.split(vim.inspect(records), "\n"))
+    vim.api.nvim_buf_set_lines(buf_new, 0, -1, true, systems.get_diff_line())
 end
 
-vim.api.nvim_create_user_command("Diff", get_diff, {
-    desc = "parse git diff in current workspace",
-    nargs = 1,
-})
+local function sync_diff_compare_cursor()
+    local buf_old, buf_new = M.buf_old, M.buf_new
+    if not (buf_old and buf_new) then return end
+
+    local cur_win = vim.api.nvim_get_current_win()
+    local pos = vim.api.nvim_win_get_cursor(cur_win)
+
+    for _, buf in ipairs { buf_old, buf_new } do
+        local win = buf_op.find_win_with_buf(buf)
+        if win then
+            vim.api.nvim_win_set_cursor(win, pos)
+        end
+    end
+end
+
+local function setup_autocmd_for_buffer()
+    for _, buf in ipairs { M.buf_old, M.buf_new } do
+        vim.api.nvim_create_autocmd("CursorMoved", {
+            group = M.augroup_id,
+            buffer = buf,
+            callback = function()
+                sync_diff_compare_cursor()
+            end
+        })
+    end
+end
+
+function M.setup()
+    systems.init()
+
+    vim.api.nvim_create_user_command("Diff", get_diff, {
+        desc = "parse git diff in current workspace",
+        nargs = 1,
+        complete = "file",
+    })
+
+    local augroup_id = vim.api.nvim_create_augroup("vcs-helper", { clear = true })
+    M.augroup_id = augroup_id
+
+    vim.api.nvim_create_autocmd("FileType", {
+        group = augroup_id,
+        pattern = DIFF_FILE_TYPE,
+        callback = function()
+            -- setup_autocmd_for_buffer()
+        end,
+    })
+end
+
+return M
