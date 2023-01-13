@@ -114,12 +114,13 @@ function M.add_diff_record(list, line_num, buffer_old, buffer_new)
     if delete_st <= len_old then
         local old, new = {}, {}
         for i = delete_st, len_old do
-            old[#old + 1] = buffer_old[i]
-            new[#new + 1] = ""
+            local line = buffer_old[i]
+            old[#old + 1] = line
+            new[#new + 1] = line:gsub("[^%s]", "-")
         end
 
         list[#list + 1] = {
-            line = line_num + smaller, type = DiffType.delete,
+            line = line_num + smaller - 1, type = DiffType.delete,
             old = old, new = new,
         }
 
@@ -131,8 +132,9 @@ function M.add_diff_record(list, line_num, buffer_old, buffer_new)
     if insert_st <= len_new then
         local old, new = {}, {}
         for i = insert_st, len_new do
-            old[#old + 1] = ""
-            new[#new + 1] = buffer_new[i]
+            local line = buffer_new[i]
+            old[#old + 1] = line:gsub("[^%s]", "+")
+            new[#new + 1] = line
         end
 
         list[#list + 1] = {
@@ -207,7 +209,6 @@ function M.parse_diff()
         if not (st and ed) then break end
 
         local filename, records = system.parse_diff_file(diff_lines, st, ed)
-        print(filename, records)
         record_map[filename] = records
 
         index = ed + 1

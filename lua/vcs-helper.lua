@@ -74,19 +74,9 @@ local function write_diff_record_to_buf(filename, records, buf_old, buf_new)
 
         local buffer_new = record.new
         local buffer_old = record.old
-
         local difftype = record.type
-        local hl_old, hl_new
-        if difftype == DiffType.insert then
-            hl_old, hl_new = DiffType.none, DiffType.insert
-        elseif difftype == DiffType.delete then
-            hl_old, hl_new = DiffType.delete, DiffType.none
-        else
-            hl_old, hl_new = DiffType.change, DiffType.change
-        end
-
-        buf_op.append_to_buf_with_highlight(buf_old, hl_old, buffer_old)
-        buf_op.append_to_buf_with_highlight(buf_new, hl_new, buffer_new)
+        buf_op.append_to_buf_with_highlight(buf_old, difftype, buffer_old)
+        buf_op.append_to_buf_with_highlight(buf_new, difftype, buffer_new)
 
         line_input_index = linenumber + #buffer_new
     end
@@ -131,6 +121,8 @@ local function get_diff(data)
     local filename = data.args
     if not filename then return end
 
+    filename = vim.fs.normalize(filename)
+
     local record_map = systems.parse_diff()
     local records = record_map[filename]
     if not records then
@@ -144,10 +136,10 @@ local function get_diff(data)
         return
     end
 
-    -- local err = write_diff_record_to_buf(filename, records, buf_old, buf_new)
-    -- if err then vim.notify(err) end
-    vim.api.nvim_buf_set_lines(buf_old, 0, -1, true, vim.split(vim.inspect(records), "\n"))
-    vim.api.nvim_buf_set_lines(buf_new, 0, -1, true, systems.get_diff_line())
+    local err = write_diff_record_to_buf(filename, records, buf_old, buf_new)
+    if err then vim.notify(err) end
+    -- vim.api.nvim_buf_set_lines(buf_old, 0, -1, true, vim.split(vim.inspect(records), "\n"))
+    -- vim.api.nvim_buf_set_lines(buf_new, 0, -1, true, systems.get_diff_line())
 end
 
 local function sync_diff_compare_cursor()
@@ -193,7 +185,7 @@ function M.setup()
         group = augroup_id,
         pattern = DIFF_FILE_TYPE,
         callback = function()
-            -- setup_autocmd_for_buffer()
+            setup_autocmd_for_buffer()
         end,
     })
 end

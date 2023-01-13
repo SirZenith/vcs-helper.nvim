@@ -88,6 +88,10 @@ end
 ---@param pwd string
 ---@return string?
 function M.find_root(pwd)
+    if vim.fn.isdirectory(pwd .. "/.git") then
+        return pwd
+    end
+
     local root_dir
     for dir in vim.fs.parents(pwd) do
         if vim.fn.isdirectory(dir .. "/.git") == 1 then
