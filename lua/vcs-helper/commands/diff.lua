@@ -1,7 +1,8 @@
 local systems = require "vcs-helper.systems"
-local buf_op = require "vcs-helper.buf_op"
+local panelpal = require "panelpal"
 
 local DiffType = systems.DiffType
+local UpdateMethod = panelpal.PanelContentUpdateMethod
 
 local diff_panel_namespace = "vschelper.diff"
 local diff_panel_old_name = diff_panel_namespace .. ".old"
@@ -44,8 +45,8 @@ local function read_common_lines(lines, st, ed, buf_old, buf_new)
     for i = st, ed do
         buffer[#buffer + 1] = lines[i]
     end
-    buf_op.append_to_buf_with_highlight(buf_old, DiffType.common, buffer)
-    buf_op.append_to_buf_with_highlight(buf_new, DiffType.common, buffer)
+    panelpal.write_to_buf_with_highlight(buf_old, DiffType.common, buffer, UpdateMethod.append)
+    panelpal.write_to_buf_with_highlight(buf_new, DiffType.common, buffer, UpdateMethod.append)
 end
 
 ---@param filename string
@@ -74,8 +75,8 @@ local function write_diff_record_to_buf(filename, records, buf_old, buf_new)
         local buffer_new = record.new
         local buffer_old = record.old
         local difftype = record.type
-        buf_op.append_to_buf_with_highlight(buf_old, difftype, buffer_old)
-        buf_op.append_to_buf_with_highlight(buf_new, difftype, buffer_new)
+        panelpal.write_to_buf_with_highlight(buf_old, difftype, buffer_old, UpdateMethod.append)
+        panelpal.write_to_buf_with_highlight(buf_new, difftype, buffer_new, UpdateMethod.append)
 
         local offset = difftype ~= DiffType.delete and #buffer_new or 0
         line_input_index = linenumber + offset
@@ -90,8 +91,8 @@ end
 ---@return integer? buf_old
 ---@return integer? buf_new
 local function open_diff_panel()
-    local buf_old, win_old = buf_op.find_or_create_buf_with_name(diff_panel_old_name, false, true)
-    local buf_new, win_new = buf_op.find_or_create_buf_with_name(diff_panel_new_name, false, true)
+    local buf_old, win_old = panelpal.find_or_create_buf_with_name(diff_panel_old_name)
+    local buf_new, win_new = panelpal.find_or_create_buf_with_name(diff_panel_new_name)
     if not (buf_old and buf_new) then
         return nil, nil
     end
@@ -150,7 +151,7 @@ local function sync_diff_compare_cursor()
     local pos = vim.api.nvim_win_get_cursor(cur_win)
 
     for _, buf in ipairs { buf_old, buf_new } do
-        local win = buf_op.find_win_with_buf(buf)
+        local win = panelpal.find_win_with_buf(buf, false)
         if win then
             vim.api.nvim_win_set_cursor(win, pos)
         end

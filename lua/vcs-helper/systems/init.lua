@@ -438,7 +438,7 @@ function M.init()
     end
 
     M.active_system = sys
-    M.root_dir = vim.fs.normalize(root)
+    M.root_dir = root and vim.fs.normalize(root)
 end
 
 return M
