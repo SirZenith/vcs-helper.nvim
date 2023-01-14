@@ -86,7 +86,7 @@ end
 -- -----------------------------------------------------------------------------
 -- Status
 
-local STATUS_LINE_PATT = "([ %a])([ %a]) (.+)"
+local STATUS_LINE_PATT = "([ %?%a])([ %?%a]) (.+)"
 local STATUS_PATH_PAIR_PATT = "(.+) %-> (.+)"
 
 ---@enum GitStatusPrefix
@@ -147,6 +147,24 @@ end
 function M.status_cmd(root)
     local status = vim.fn.system("git status -s " .. root)
     return status
+end
+
+---@param files string[]
+---@param msg string
+---@return string? err
+function M.commit_cmd(files, msg)
+    local line = '"' .. table.concat(files, '" "') .. '"'
+    local add_cmd = "git add " .. line
+    print(add_cmd)
+    vim.fn.system(add_cmd)
+    if vim.v.shell_error ~= 0 then
+        return "failed to stage files"
+    end
+
+    vim.fn.system('git commit -m "' .. msg .. '"')
+    if vim.v.shell_error ~= 0 then
+        return "files are staged but failed to commit"
+    end
 end
 
 -- -----------------------------------------------------------------------------

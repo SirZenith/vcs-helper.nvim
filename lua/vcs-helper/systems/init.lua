@@ -12,6 +12,7 @@ M.HEADER_HUNK_PATT = "@@ %-(%d-),(%d-) %+(%d-),(%d-) @@"
 --
 ---@field diff_cmd fun(root: string): string
 ---@field status_cmd fun(root: string): string
+---@field commit_cmd fun(files: string[], msg: string): string?
 --
 ---@field find_root fun(pwd: string): string?
 
@@ -409,7 +410,10 @@ local StatusType = {
 ---@param path? string
 ---@return StatusRecord[]
 function M.parse_status(path)
-    local abs_path = M.to_abs_path(path or M.root_dir)
+    path = path or M.root_dir
+    if not path then return {} end
+
+    local abs_path = M.to_abs_path(path)
     local system = M.active_system
     if not (abs_path and system) then
         return {}
@@ -418,6 +422,21 @@ function M.parse_status(path)
     local status = system.status_cmd(abs_path)
     local status_lines = vim.split(status, "\n")
     return system.parse_status(status_lines)
+end
+
+-- -----------------------------------------------------------------------------
+-- Commit
+
+---@param files string[]
+---@param msg string
+---@return string? err
+function M.commit(files, msg)
+    local system = M.active_system
+    if not system then
+        return
+    end
+
+    return system.commit_cmd(files, msg)
 end
 
 -- -----------------------------------------------------------------------------
