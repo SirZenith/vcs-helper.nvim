@@ -155,7 +155,6 @@ end
 function M.commit_cmd(files, msg)
     local line = '"' .. table.concat(files, '" "') .. '"'
     local add_cmd = "git add " .. line
-    print(add_cmd)
     vim.fn.system(add_cmd)
     if vim.v.shell_error ~= 0 then
         return "failed to stage files"
