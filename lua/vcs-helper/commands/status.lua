@@ -1,5 +1,4 @@
 local systems = require "vcs-helper.systems"
-local diff = require "vcs-helper.commands.diff"
 local selection_panel = require "panelpal.selection_panel"
 
 local SelectionPanel = selection_panel.SelectionPanel
@@ -12,6 +11,8 @@ M.cur_selection = 0
 ---@param _ SelectionPanel
 ---@param index integer
 local function on_select_status_item(_, index)
+    local diff = require "vcs-helper.commands.diff"
+
     local info = M.records[index]
     local path = vim.fn.getcwd() .. "/" .. info.path
     local abs_path = systems.to_abs_path(path)

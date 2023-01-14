@@ -158,7 +158,11 @@ end
 
 function M.show_diff(data)
     local filename = data.args
-    if not filename then return end
+    if filename == "" then
+        local status = require "vcs-helper.commands.status"
+        status.show_status()
+        return
+    end
 
     local records, abs_filename = M.update_diff(filename)
     if not records then
@@ -203,7 +207,7 @@ end
 function M.init()
     vim.api.nvim_create_user_command("VcsDiff", M.show_diff, {
         desc = "parse git diff in current workspace",
-        nargs = 1,
+        nargs = "?",
         complete = "file",
     })
 
