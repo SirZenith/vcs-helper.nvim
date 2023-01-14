@@ -86,6 +86,10 @@ end
 -- -----------------------------------------------------------------------------
 -- Status
 
+local STATUS_LINE_PATT = "([ %a])([ %a]) (.+)"
+local STATUS_PATH_PAIR_PATT = "(.+) %-> (.+)"
+
+---@enum GitStatusPrefix
 local StatusPrefix = {
     modify = "M",
     typechange = "T",
@@ -97,6 +101,37 @@ local StatusPrefix = {
     untrack = "?",
     ignore = "!"
 }
+
+---@param line string
+---@return StatusRecord?
+function M.parse_status_line(line)
+    local upstream_status, local_status, path_info = line:match(STATUS_LINE_PATT)
+    if not (upstream_status and local_status and path_info) then
+        return
+    end
+
+    local orig_path, path = path_info:match(STATUS_PATH_PAIR_PATT)
+    path = path and path or path_info
+
+    return {
+        upstream_status = upstream_status,
+        local_status = local_status,
+        path = systems.read_quoted_string(path),
+        orig_path = orig_path and systems.read_quoted_string(orig_path),
+    }
+end
+
+---@param status_lines string[]
+---@return StatusRecord[]
+function M.parse_status(status_lines)
+    local records = {}
+
+    for i = 1, #status_lines do
+        records[#records+1] = M.parse_status_line(status_lines[i])
+    end
+
+    return records
+end
 
 -- -----------------------------------------------------------------------------
 -- Commands

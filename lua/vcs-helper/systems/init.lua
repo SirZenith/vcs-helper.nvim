@@ -3,12 +3,17 @@ local M = {}
 M.HEADER_HUNK_PATT = "@@ %-(%d-),(%d-) %+(%d-),(%d-) @@"
 
 ---@class VcsSystem
+--
 ---@field file_diff_range_cond LineRangeCondition
 ---@field get_file_path fun(diff_lines: string[], st: integer, ed: integer): string
 ---@field parse_diff_file fun(diff_lines: string[], st: integer, ed: integer)): string, DiffRecord[]
----@field find_root fun(pwd: string): string?
+--
+---@field parse_status fun(status_lines: string[]): StatusRecord[]
+--
 ---@field diff_cmd fun(root: string): string
 ---@field status_cmd fun(root: string): string
+--
+---@field find_root fun(pwd: string): string?
 
 ---@type VcsSystem?
 M.active_system = nil
@@ -120,6 +125,50 @@ function M.to_abs_path(path)
     end
 
     return table.concat(result_segments, "/")
+end
+
+local CHAR_ESCAPE_MAP = {
+    ["a"] = "\a",
+    ["b"] = "\b",
+    ["e"] = "\027",
+    ["f"] = "\012",
+    ["n"] = "\n",
+    ["r"] = "\r",
+    ["t"] = "\t",
+    ["v"] = "\v",
+    ["\\"] = "\\",
+    ["'"] = "'",
+    ['"'] = '"',
+    ["?"] = "?",
+}
+
+---@param str string
+---@return string
+function M.read_quoted_string(str)
+    local _, content = str:match("%s*(['\"])(.*)%1%s*")
+    if not content then
+        return str
+    end
+
+    local buf = {}
+    local is_escaping = false
+    for i = 1, #content do
+        local char = content:sub(i, i)
+
+        local result
+        if char == "\\" then
+            is_escaping = true
+        elseif is_escaping then
+            result = CHAR_ESCAPE_MAP[char]
+            is_escaping = false
+        else
+            result = char
+        end
+
+        buf[#buf + 1] = result
+    end
+
+    return table.concat(buf)
 end
 
 -- -------------------------------------------------------------------------------
@@ -338,6 +387,13 @@ end
 -- -----------------------------------------------------------------------------
 -- Status
 
+---@class StatusRecord
+---@field upstream_status StatusType
+---@field local_status StatusType
+---@field path string
+---@field orig_path string?
+
+---@enum StatusType
 local StatusType = {
     modify = "StatusModify",
     typechange = "StatusTypeChange",
@@ -350,7 +406,18 @@ local StatusType = {
     ignore = "StatusIgnore",
 }
 
-function M.parse_status()
+---@param path? string
+---@return StatusRecord[]
+function M.parse_status(path)
+    local abs_path = M.to_abs_path(path or M.root_dir)
+    local system = M.active_system
+    if not (abs_path and system) then
+        return {}
+    end
+
+    local status = system.status_cmd(abs_path)
+    local status_lines = vim.split(status, "\n")
+    return system.parse_status(status_lines)
 end
 
 -- -----------------------------------------------------------------------------
