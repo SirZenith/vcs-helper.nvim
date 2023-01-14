@@ -1,10 +1,129 @@
-local line_range = require "vcs-helper.line_range"
-
-local LineRangeConditioin = line_range.LineRangeCondition
-
 local M = {}
 
 M.HEADER_HUNK_PATT = "@@ %-(%d-),(%d-) %+(%d-),(%d-) @@"
+
+---@class VcsSystem
+---@field file_diff_range_cond LineRangeCondition
+---@field get_file_path fun(diff_lines: string[], st: integer, ed: integer): string
+---@field parse_diff_file fun(diff_lines: string[], st: integer, ed: integer)): string, DiffRecord[]
+---@field find_root fun(pwd: string): string?
+---@field diff_cmd fun(root: string): string
+---@field status_cmd fun(root: string): string
+
+---@type VcsSystem?
+M.active_system = nil
+M.root_dir = "."
+
+---@type {[string]: DiffRecord[]}
+M.record_map = {}
+
+function M.starts_with(s, prefix)
+    local len_s = #s
+    local len_prefix = #prefix
+    if len_s < len_prefix then
+        return false
+    end
+    return s:sub(1, len_prefix) == prefix
+end
+
+-- -----------------------------------------------------------------------------
+-- Range extraction
+
+---@class LineRangeCondition
+---@field st_cond fun(lines: string[], index: integer): boolean
+---@field ed_cond fun(lines: string[], index: integer, range_st: integer): boolean
+local LineRangeCondition = {}
+M.LineRangeCondition = LineRangeCondition
+
+---@param st_cond fun(lines: string[], index: integer): boolean
+---@param ed_cond fun(lines: string[], index: integer, range_st: integer): boolean
+function LineRangeCondition:new(st_cond, ed_cond)
+    self.__index = self
+
+    local obj = {
+        st_cond = st_cond,
+        ed_cond = ed_cond,
+    }
+
+    return setmetatable(obj, self)
+end
+
+---@param lines string[]
+---@param index integer
+---@return integer? st
+---@return integer? ed
+function LineRangeCondition:get_line_range(lines, index)
+    local len, st, ed = #lines, nil, nil
+    local st_cond, ed_cond = self.st_cond, self.ed_cond
+    for s = index, len do
+        if st_cond(lines, s) then
+            st = s
+
+            for e = st, len do
+                if ed_cond(lines, e, st) then
+                    ed = e
+                    break
+                end
+            end
+        end
+
+        if st and ed then break end
+    end
+
+    st = ed and st or nil
+
+    return st, ed
+end
+
+-- -----------------------------------------------------------------------------
+-- Utility
+
+---@param path string
+---@return boolean
+function M.is_abs_path(path)
+    if vim.fn.has("win32") then
+        return path:match("%a:[/\\]") ~= nil
+    else
+        return path:sub(1, 1) == "/"
+    end
+end
+
+---@param path string
+---@return string?
+function M.to_abs_path(path)
+    if M.is_abs_path(path) then return path end
+
+    local pwd = vim.fn.getcwd()
+    pwd = vim.fs.normalize(pwd)
+    path = vim.fs.normalize(path)
+
+    local result_segments = vim.split(pwd, "/")
+    local path_segments = vim.split(path, "/")
+
+    for _, seg in ipairs(path_segments) do
+        local white_st, white_ed = seg:match("%s+")
+        if seg == ""
+            or seg == "."
+            or (white_st == 1 and white_ed == #seg)
+        then
+            -- pass
+        elseif seg == ".." then
+            local len = #result_segments
+            if len == 1 then
+                -- trying to get parent of root, illegal input path
+                return nil
+            end
+            result_segments[len] = nil
+        else
+            result_segments[#result_segments + 1] = seg
+        end
+    end
+
+    return table.concat(result_segments, "/")
+end
+
+-- -------------------------------------------------------------------------------
+-- Diff
 
 ---@enum Header
 local Header = {
@@ -15,12 +134,12 @@ local Header = {
 M.Header = Header
 
 ---@enum LinePrefix
-local LinePrefix = {
+local DiffPrefix = {
     old = "-",
     new = "+",
     common = " "
 }
-M.LinePrefix = LinePrefix
+M.LinePrefix = DiffPrefix
 
 ---@enum DiffType
 local DiffType = {
@@ -32,16 +151,7 @@ local DiffType = {
 }
 M.DiffType = DiffType
 
-function M.starts_with(s, prefix)
-    local len_s = #s
-    local len_prefix = #prefix
-    if len_s < len_prefix then
-        return false
-    end
-    return s:sub(1, len_prefix) == prefix
-end
-
-M.hunk_diff_range_cond = LineRangeConditioin:new(
+M.hunk_diff_range_cond = LineRangeCondition:new(
     function(lines, index)
         return index < #lines
             and lines[index]:match(M.HEADER_HUNK_PATT) ~= nil
@@ -56,23 +166,6 @@ M.hunk_diff_range_cond = LineRangeConditioin:new(
         end
     end
 )
-
-
----@class VcsSystem
----@field file_diff_range_cond LineRangeCondition
----@field get_file_path fun(diff_lines: string[], st: integer, ed: integer): string
----@field parse_diff_file fun(diff_lines: string[], st: integer, ed: integer)): string, DiffRecord[]
----@field find_root fun(pwd: string): string?
----@field diff_cmd fun(root: string): string[]
-
----@type VcsSystem?
-M.active_system = nil
-M.root_dir = "."
-
----@type {[string]: DiffRecord[]}
-M.record_map = {}
-
--- -----------------------------------------------------------------------------
 
 ---@class DiffRecord
 ---@field line integer # starting line number of this diff range.
@@ -116,11 +209,11 @@ function M.add_diff_record(list, line_num, buffer_old, buffer_new)
         for i = delete_st, len_old do
             local line = buffer_old[i]
             old[#old + 1] = line
-            new[#new + 1] = line:gsub("[^%s]", "-")
+            new[#new + 1] = line:gsub("[^%s]", "╴")
         end
 
         list[#list + 1] = {
-            line = line_num + smaller - 1, type = DiffType.delete,
+            line = line_num + smaller, type = DiffType.delete,
             old = old, new = new,
         }
 
@@ -133,7 +226,7 @@ function M.add_diff_record(list, line_num, buffer_old, buffer_new)
         local old, new = {}, {}
         for i = insert_st, len_new do
             local line = buffer_new[i]
-            old[#old + 1] = line:gsub("[^%s]", "+")
+            old[#old + 1] = line:gsub("[^%s]", "─")
             new[#new + 1] = line
         end
 
@@ -168,12 +261,12 @@ function M.parse_diff_hunk(diff_lines, st, ed)
         local sign = diff_line:sub(1, 1)
         local line = diff_line:sub(2)
 
-        if sign == LinePrefix.old then
+        if sign == DiffPrefix.old then
             buffer_old[#buffer_old + 1] = line
-        elseif sign == LinePrefix.new then
+        elseif sign == DiffPrefix.new then
             cur_line_num = cur_line_num + 1
             buffer_new[#buffer_new + 1] = line
-        elseif sign == LinePrefix.common then
+        elseif sign == DiffPrefix.common then
             cur_line_num = cur_line_num + 1
 
             local line_num = last_common_line_num + 1
@@ -192,15 +285,17 @@ function M.parse_diff_hunk(diff_lines, st, ed)
     return records
 end
 
----@return {[string]: DiffRecord[]} record_map
-function M.parse_diff()
+---@param path string
+function M.parse_diff(path)
+    local abs_path = M.to_abs_path(path)
     local system = M.active_system
-    if not system then
+    if not (abs_path and system) then
         M.record_map = {}
-        return M.record_map
+        return
     end
 
-    local diff_lines = system.diff_cmd(M.root_dir)
+    local diff = system.diff_cmd(abs_path)
+    local diff_lines = vim.split(diff, "\n")
     local len, index = #diff_lines, 1
     local record_map = {}
 
@@ -209,29 +304,56 @@ function M.parse_diff()
         if not (st and ed) then break end
 
         local filename, records = system.parse_diff_file(diff_lines, st, ed)
-        record_map[filename] = records
+        local abs_filename = M.to_abs_path(M.root_dir .. "/" .. filename)
+        if abs_filename then
+            record_map[abs_filename] = records
+        end
 
         index = ed + 1
     end
 
     M.record_map = record_map
-
-    return record_map
-end
-
-function M.get_diff_line()
-    local system = M.active_system
-    if not system then
-        return {} 
-    end
-    return system.diff_cmd(M.root_dir)
 end
 
 ---@param filename string
 ---@return DiffRecord[]?
 function M.get_diff_record(filename)
-    return M.record_map[filename]
+    local abs_filename = M.to_abs_path(filename)
+    if not abs_filename then return end
+
+    return M.record_map[abs_filename]
 end
+
+function M.get_diff_line(path)
+    local abs_path = M.to_abs_path(path)
+    local system = M.active_system
+    if not (abs_path and system) then
+        M.record_map = {}
+        return
+    end
+    local diff = system.diff_cmd(abs_path)
+    return vim.split(diff, "\n")
+end
+
+-- -----------------------------------------------------------------------------
+-- Status
+
+local StatusType = {
+    modify = "StatusModify",
+    typechange = "StatusTypeChange",
+    add = "StatusAdd",
+    delete = "StatusDelete",
+    rename = "StatusRename",
+    copy = "StatusCopy",
+    update = "StatusUpdate",
+    untrack = "StatusUntrack",
+    ignore = "StatusIgnore",
+}
+
+function M.parse_status()
+end
+
+-- -----------------------------------------------------------------------------
 
 function M.init()
     local systems = {
@@ -249,7 +371,7 @@ function M.init()
     end
 
     M.active_system = sys
-    M.root_dir = root
+    M.root_dir = vim.fs.normalize(root)
 end
 
 return M

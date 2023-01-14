@@ -20,8 +20,7 @@ M.buf_new = nil
 ---@return string? err
 local function read_file_lines(filename)
     local lines = {}
-    local full_path = systems.root_dir .. "/" .. filename
-    local file, err = io.open(full_path, "r")
+    local file, err = io.open(filename, "r")
     if not file then
         return nil, err
     end
@@ -78,7 +77,8 @@ local function write_diff_record_to_buf(filename, records, buf_old, buf_new)
         buf_op.append_to_buf_with_highlight(buf_old, difftype, buffer_old)
         buf_op.append_to_buf_with_highlight(buf_new, difftype, buffer_new)
 
-        line_input_index = linenumber + #buffer_new
+        local offset = difftype ~= DiffType.delete and #buffer_new or 0
+        line_input_index = linenumber + offset
     end
 
     read_common_lines(lines, line_input_index, #lines, buf_old, buf_new)
@@ -121,10 +121,10 @@ local function get_diff(data)
     local filename = data.args
     if not filename then return end
 
-    filename = vim.fs.normalize(filename)
+    local abs_filename = vim.fs.normalize(systems.to_abs_path(filename))
 
-    local record_map = systems.parse_diff()
-    local records = record_map[filename]
+    systems.parse_diff(abs_filename)
+    local records = systems.get_diff_record(abs_filename)
     if not records then
         vim.notify("no diff info found for file: " .. filename)
         return
@@ -136,11 +136,13 @@ local function get_diff(data)
         return
     end
 
-    local err = write_diff_record_to_buf(filename, records, buf_old, buf_new)
+    local err = write_diff_record_to_buf(abs_filename, records, buf_old, buf_new)
     if err then vim.notify(err) end
     -- vim.api.nvim_buf_set_lines(buf_old, 0, -1, true, vim.split(vim.inspect(records), "\n"))
-    -- vim.api.nvim_buf_set_lines(buf_new, 0, -1, true, systems.get_diff_line())
+    -- vim.api.nvim_buf_set_lines(buf_new, 0, -1, true, systems.get_diff_line(filename))
 end
+
+-- -----------------------------------------------------------------------------
 
 local function sync_diff_compare_cursor()
     local buf_old, buf_new = M.buf_old, M.buf_new
@@ -168,6 +170,8 @@ local function setup_autocmd_for_buffer()
         })
     end
 end
+
+-- -----------------------------------------------------------------------------
 
 function M.setup()
     systems.init()
