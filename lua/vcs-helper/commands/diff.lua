@@ -88,9 +88,24 @@ local function write_diff_record_to_buf(filename, records, buf_old, buf_new)
     vim.bo[buf_new].modifiable = false
 end
 
+---@param filename string
+---@return DiffRecord[]?
+---@return string abs_filename
+function M.update_diff(filename)
+    local abs_filename = vim.fs.normalize(systems.to_abs_path(filename))
+    systems.parse_diff(abs_filename)
+    local records = systems.get_diff_record(abs_filename)
+    return records, abs_filename
+end
+
+---@param abs_filename string
+---@param records DiffRecord[]
+---@param in_new_tab? boolean
 ---@return integer? buf_old
 ---@return integer? buf_new
-local function open_diff_panel()
+function M.open_diff_panel(abs_filename, records, in_new_tab)
+    in_new_tab = in_new_tab or false
+
     local buf_old, win_old = panelpal.find_or_create_buf_with_name(diff_panel_old_name)
     local buf_new, win_new = panelpal.find_or_create_buf_with_name(diff_panel_new_name)
     if not (buf_old and buf_new) then
@@ -106,7 +121,22 @@ local function open_diff_panel()
     end
 
     if not (win_old and win_new) then
-        vim.cmd "tabnew"
+        if in_new_tab then
+            vim.cmd "tabnew"
+        else
+            local win, height = nil, 0
+            local wins = vim.api.nvim_tabpage_list_wins(0)
+            for i = 1, #wins do
+                local w = wins[i]
+                local h = vim.api.nvim_win_get_height(w)
+                if h > height then
+                    win = w
+                    height = h
+                end
+            end
+
+            vim.api.nvim_set_current_win(win)
+        end
         win_old = vim.api.nvim_get_current_win()
         vim.api.nvim_win_set_buf(win_old, buf_old)
 
@@ -115,23 +145,6 @@ local function open_diff_panel()
         vim.api.nvim_win_set_buf(win_new, buf_new)
     end
 
-    return buf_old, buf_new
-end
-
-local function show_diff(data)
-    local filename = data.args
-    if not filename then return end
-
-    local abs_filename = vim.fs.normalize(systems.to_abs_path(filename))
-
-    systems.parse_diff(abs_filename)
-    local records = systems.get_diff_record(abs_filename)
-    if not records then
-        vim.notify("no diff info found for file: " .. filename)
-        return
-    end
-
-    local buf_old, buf_new = open_diff_panel()
     if not (buf_old and buf_new) then
         vim.notify("failed to create buf for diff content.")
         return
@@ -139,6 +152,21 @@ local function show_diff(data)
 
     local err = write_diff_record_to_buf(abs_filename, records, buf_old, buf_new)
     if err then vim.notify(err) end
+
+    return buf_old, buf_new
+end
+
+function M.show_diff(data)
+    local filename = data.args
+    if not filename then return end
+
+    local records, abs_filename = M.update_diff(filename)
+    if not records then
+        vim.notify("no diff info found for file: " .. filename)
+        return
+    end
+
+    M.open_diff_panel(abs_filename, records, true)
 end
 
 -- -----------------------------------------------------------------------------
@@ -173,7 +201,7 @@ end
 -- -----------------------------------------------------------------------------
 
 function M.init()
-    vim.api.nvim_create_user_command("Diff", show_diff, {
+    vim.api.nvim_create_user_command("VcsDiff", M.show_diff, {
         desc = "parse git diff in current workspace",
         nargs = 1,
         complete = "file",
