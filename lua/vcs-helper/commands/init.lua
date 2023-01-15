@@ -9,8 +9,13 @@ local TabPage = tabpage.TabPage
 
 local M = {}
 
-local tp = TabPage:new()
-M.tabpage = tp
+M.tabpage = TabPage:new {
+    keymap = {
+        toggle_bottom_panel = "<leader><backspace>",
+    }
+}
+
+local tp = M.tabpage
 
 function M.show_diff(args)
     local filename = systems.read_quoted_string(args.fargs[1] or "")

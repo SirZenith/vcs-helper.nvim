@@ -190,14 +190,4 @@ end
 
 -- -----------------------------------------------------------------------------
 
-M.get_buffers()
-
-api.nvim_create_autocmd("FileType", {
-    group = M.augroup_id,
-    pattern = DIFF_FILE_TYPE,
-    callback = function()
-        setup_autocmd_for_buffer()
-    end,
-})
-
 return M
