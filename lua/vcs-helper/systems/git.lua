@@ -4,8 +4,6 @@ local Header = systems.Header
 local LineRangeConditioin = systems.LineRangeCondition
 
 local starts_with = systems.starts_with
-local hunk_diff_range_cond = systems.hunk_diff_range_cond
-local parse_diff_hunk = systems.parse_diff_hunk
 
 local M = {}
 
@@ -51,36 +49,15 @@ function M.get_file_path(diff_lines, st, _)
         end
     end
 
-    return prefixed_path
+    local path =  systems.to_abs_path(systems.root_dir .. "/" .. prefixed_path)
+    path = vim.fs.normalize(path)
+
+    return path
 end
 
----@param diff_lines string[]
----@param st integer
----@param ed integer
----@return string filename
----@return DiffRecord[] records
-function M.parse_diff_file(diff_lines, st, ed)
-    local len = #diff_lines
-    ed = ed <= len and ed or len
-
-    local filename = M.get_file_path(diff_lines, st, ed)
-
-    local records = {}
-
-    local index = st + 4
-    while index <= ed do
-        local s, e = hunk_diff_range_cond:get_line_range(diff_lines, index)
-        if not (s and e) then break end
-
-        local record = parse_diff_hunk(diff_lines, s, e)
-        for _, r in ipairs(record) do
-            records[#records + 1] = r
-        end
-
-        index = e + 1
-    end
-
-    return filename, records
+---@return integer
+function M.get_file_diff_header_len(_, _, _)
+    return 4
 end
 
 -- -----------------------------------------------------------------------------
@@ -91,6 +68,7 @@ local STATUS_PATH_PAIR_PATT = "(.+) %-> (.+)"
 
 ---@enum GitStatusPrefix
 local StatusPrefix = {
+    nochange = " ",
     modify = "M",
     typechange = "T",
     add = "A",
@@ -112,25 +90,15 @@ function M.parse_status_line(line)
 
     local orig_path, path = path_info:match(STATUS_PATH_PAIR_PATT)
     path = path and path or path_info
+    path = vim.fn.getcwd() .. "/" .. systems.read_quoted_string(path)
+    path = vim.fs.normalize(path)
 
     return {
         upstream_status = upstream_status,
         local_status = local_status,
-        path = systems.read_quoted_string(path),
+        path = path,
         orig_path = orig_path and systems.read_quoted_string(orig_path),
     }
-end
-
----@param status_lines string[]
----@return StatusRecord[]
-function M.parse_status(status_lines)
-    local records = {}
-
-    for i = 1, #status_lines do
-        records[#records+1] = M.parse_status_line(status_lines[i])
-    end
-
-    return records
 end
 
 -- -----------------------------------------------------------------------------
@@ -144,6 +112,7 @@ function M.diff_cmd(root)
 end
 
 ---@param root string # root path of repository
+---@return string
 function M.status_cmd(root)
     local status = vim.fn.system("git status -s " .. root)
     return status
@@ -175,19 +144,7 @@ function M.find_root(pwd)
         return
     end
 
-    if vim.fn.isdirectory(pwd .. "/.git") == 1 then
-        return pwd
-    end
-
-    local root_dir
-    for dir in vim.fs.parents(pwd) do
-        if vim.fn.isdirectory(dir .. "/.git") == 1 then
-            root_dir = dir
-            break
-        end
-    end
-
-    return root_dir
+    return systems.find_root_by_keyfile(pwd, ".git")
 end
 
 return M

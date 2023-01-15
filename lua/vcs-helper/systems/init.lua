@@ -6,9 +6,9 @@ M.HEADER_HUNK_PATT = "@@ %-(%d-),(%d-) %+(%d-),(%d-) @@"
 --
 ---@field file_diff_range_cond LineRangeCondition
 ---@field get_file_path fun(diff_lines: string[], st: integer, ed: integer): string
----@field parse_diff_file fun(diff_lines: string[], st: integer, ed: integer)): string, DiffRecord[]
+---@field get_file_diff_header_len fun(diff_lines: string[], st: integer, ed: integer): integer
 --
----@field parse_status fun(status_lines: string[]): StatusRecord[]
+---@field parse_status_line fun(line: string): StatusRecord
 --
 ---@field diff_cmd fun(root: string): string
 ---@field status_cmd fun(root: string): string
@@ -172,6 +172,24 @@ function M.read_quoted_string(str)
     return table.concat(buf)
 end
 
+---@param pwd string
+---@param target string
+function M.find_root_by_keyfile(pwd, target)
+    if vim.fn.isdirectory(pwd .. "/" .. target) == 1 then
+        return pwd
+    end
+
+    local root_dir
+    for dir in vim.fs.parents(pwd) do
+        if vim.fn.isdirectory(dir .. "/" .. target) == 1 then
+            root_dir = dir
+            break
+        end
+    end
+
+    return root_dir
+end
+
 -- -------------------------------------------------------------------------------
 -- Diff
 
@@ -332,7 +350,46 @@ function M.parse_diff_hunk(diff_lines, st, ed)
         end
     end
 
+    if last_common_line_num < ed then
+        M.add_diff_record(
+            records, last_common_line_num + 1, buffer_old, buffer_new
+        )
+    end
+
     return records
+end
+
+---@param diff_lines string[]
+---@param st integer
+---@param ed integer
+---@return string filename
+---@return DiffRecord[] records
+function M.parse_diff_file(diff_lines, st, ed)
+    local system = M.active_system
+    if not system then return "", {} end
+
+    local len = #diff_lines
+    ed = ed <= len and ed or len
+
+    local filename = system.get_file_path(diff_lines, st, ed)
+    filename = vim.fs.normalize(M.to_abs_path(filename))
+
+    local records = {}
+
+    local index = st + system.get_file_diff_header_len(diff_lines, st, ed)
+    while index <= ed do
+        local s, e = M.hunk_diff_range_cond:get_line_range(diff_lines, index)
+        if not (s and e) then break end
+
+        local record = M.parse_diff_hunk(diff_lines, s, e)
+        for _, r in ipairs(record) do
+            records[#records + 1] = r
+        end
+
+        index = e + 1
+    end
+
+    return filename, records
 end
 
 ---@param path string
@@ -353,10 +410,9 @@ function M.parse_diff(path)
         local st, ed = system.file_diff_range_cond:get_line_range(diff_lines, index)
         if not (st and ed) then break end
 
-        local filename, records = system.parse_diff_file(diff_lines, st, ed)
-        local abs_filename = M.to_abs_path(M.root_dir .. "/" .. filename)
-        if abs_filename then
-            record_map[abs_filename] = records
+        local filename, records = M.parse_diff_file(diff_lines, st, ed)
+        if filename then
+            record_map[filename] = records
         end
 
         index = ed + 1
@@ -370,6 +426,8 @@ end
 function M.get_diff_record(filename)
     local abs_filename = M.to_abs_path(filename)
     if not abs_filename then return end
+
+    abs_filename = vim.fs.normalize(abs_filename)
 
     return M.record_map[abs_filename]
 end
@@ -421,7 +479,13 @@ function M.parse_status(path)
 
     local status = system.status_cmd(abs_path)
     local status_lines = vim.split(status, "\n")
-    return system.parse_status(status_lines)
+    local records = {}
+
+    for i = 1, #status_lines do
+        records[#records + 1] = system.parse_status_line(status_lines[i])
+    end
+
+    return records
 end
 
 -- -----------------------------------------------------------------------------
@@ -444,6 +508,7 @@ end
 function M.init()
     local systems = {
         git = require "vcs-helper.systems.git",
+        svn = require "vcs-helper.systems.svn",
     }
 
     local sys, root
