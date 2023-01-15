@@ -1,5 +1,5 @@
 local systems = require "vcs-helper.systems"
-local selection_panel = require "panelpal.selection_panel"
+local selection_panel = require "panelpal.panels.selection_panel"
 
 local SelectionPanel = selection_panel.SelectionPanel
 
