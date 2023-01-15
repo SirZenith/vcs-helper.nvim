@@ -1,3 +1,4 @@
+local api = vim.api
 local systems = require "vcs-helper.systems"
 local panelpal = require "panelpal"
 
@@ -12,9 +13,41 @@ local DIFF_FILE_TYPE = "vcs-helper-diff"
 
 local M = {}
 
-M.augroup_id = nil
+M.augroup_id = api.nvim_create_augroup("vcs-helper.command.diff", { clear = true })
 M.buf_old = nil
 M.buf_new = nil
+
+-- -----------------------------------------------------------------------------
+
+local function sync_diff_compare_cursor()
+    local buf_old, buf_new = M.buf_old, M.buf_new
+    if not (buf_old and buf_new) then return end
+
+    local cur_win = api.nvim_get_current_win()
+    local pos = api.nvim_win_get_cursor(cur_win)
+
+    for _, buf in ipairs { buf_old, buf_new } do
+        local win = panelpal.find_win_with_buf(buf, false)
+        if win then
+            api.nvim_win_set_cursor(win, pos)
+        end
+    end
+end
+
+---@param buf integer
+local function setup_autocmd_for_buffer(buf)
+    api.nvim_create_autocmd("CursorMoved", {
+        group = M.augroup_id,
+        buffer = buf,
+        callback = function()
+            sync_diff_compare_cursor()
+        end
+    })
+end
+
+-- -----------------------------------------------------------------------------
+
+
 
 ---@param filename string
 ---@return string[]?
@@ -51,14 +84,17 @@ end
 
 ---@param filename string
 ---@param records DiffRecord[]
----@param buf_old integer
----@param buf_new integer
-local function write_diff_record_to_buf(filename, records, buf_old, buf_new)
+function M.write_diff_record_to_buf(filename, records)
+    local buf_old, buf_new = M.get_buffers()
+    if not (buf_old and buf_new) then
+        return "failed to create diff buffer"
+    end
+
     vim.bo[buf_old].modifiable = true
     vim.bo[buf_new].modifiable = true
 
-    vim.api.nvim_buf_set_lines(buf_old, 0, -1, true, {})
-    vim.api.nvim_buf_set_lines(buf_new, 0, -1, true, {})
+    api.nvim_buf_set_lines(buf_old, 0, -1, true, {})
+    api.nvim_buf_set_lines(buf_new, 0, -1, true, {})
 
     local lines, err = read_file_lines(filename)
     if not lines then
@@ -98,129 +134,70 @@ function M.update_diff(filename)
     return records, abs_filename
 end
 
----@param abs_filename string
----@param records DiffRecord[]
----@param in_new_tab? boolean
+-- return bufnr of buffers used for diff content.
 ---@return integer? buf_old
 ---@return integer? buf_new
-function M.open_diff_panel(abs_filename, records, in_new_tab)
-    in_new_tab = in_new_tab or false
+function M.get_buffers()
+    local buf_old = M.buf_old
+    if not buf_old or not api.nvim_buf_is_valid(buf_old) then
+        buf_old = api.nvim_create_buf(false, true)
+        api.nvim_buf_set_name(buf_old, diff_panel_old_name)
 
-    local buf_old, win_old = panelpal.find_or_create_buf_with_name(diff_panel_old_name)
-    local buf_new, win_new = panelpal.find_or_create_buf_with_name(diff_panel_new_name)
-    if not (buf_old and buf_new) then
+        vim.bo[buf_old].filetype = DIFF_FILE_TYPE
+        setup_autocmd_for_buffer(buf_old)
+
+        M.buf_old = buf_old
+    end
+
+    local buf_new = M.buf_new
+    if not buf_new or not api.nvim_buf_is_valid(buf_new) then
+        buf_new = api.nvim_create_buf(false, true)
+        api.nvim_buf_set_name(buf_new, diff_panel_new_name)
+
+        vim.bo[buf_new].filetype = DIFF_FILE_TYPE
+        setup_autocmd_for_buffer(buf_new)
+
+        M.buf_new = buf_new
+    end
+
+    if buf_old * buf_new == 0 then
         return nil, nil
+    else
+        return buf_old, buf_new
     end
-
-    M.buf_old, M.buf_new = buf_old, buf_new
-
-    for _, buf in ipairs { buf_old, buf_new } do
-        local opt = vim.bo[buf]
-        opt.buftype = "nofile"
-        opt.filetype = DIFF_FILE_TYPE
-    end
-
-    if not (win_old and win_new) then
-        if in_new_tab then
-            vim.cmd "tabnew"
-        else
-            local win, height = nil, 0
-            local wins = vim.api.nvim_tabpage_list_wins(0)
-            for i = 1, #wins do
-                local w = wins[i]
-                local h = vim.api.nvim_win_get_height(w)
-                if h > height then
-                    win = w
-                    height = h
-                end
-            end
-
-            vim.api.nvim_set_current_win(win)
-        end
-        win_old = vim.api.nvim_get_current_win()
-        vim.api.nvim_win_set_buf(win_old, buf_old)
-
-        vim.cmd "rightbelow vsplit"
-        win_new = vim.api.nvim_get_current_win()
-        vim.api.nvim_win_set_buf(win_new, buf_new)
-    end
-
-    if not (buf_old and buf_new) then
-        vim.notify("failed to create buf for diff content.")
-        return
-    end
-
-    local err = write_diff_record_to_buf(abs_filename, records, buf_old, buf_new)
-    if err then vim.notify(err) end
-
-    return buf_old, buf_new
 end
 
-function M.show_diff(data)
-    local filename = data.args
-    if filename == "" then
-        local status = require "vcs-helper.commands.status"
-        status.show_status()
-        return
+-- write diff content to diff buffers.
+---@return string? err
+function M.show_diff(filename)
+    if not filename then
+        error("no file name given")
+    end
+
+    local buf_old, buf_new = M.get_buffers()
+    if not (buf_old and buf_new) then
+        return "failed to create diff buffer"
     end
 
     local records, abs_filename = M.update_diff(filename)
     if not records then
-        vim.notify("no diff info found for file: " .. filename)
-        return
+        return "no diff info found for file: " .. filename
     end
 
-    M.open_diff_panel(abs_filename, records, true)
+    local err = M.write_diff_record_to_buf(abs_filename, records)
+    return err
 end
 
 -- -----------------------------------------------------------------------------
 
-local function sync_diff_compare_cursor()
-    local buf_old, buf_new = M.buf_old, M.buf_new
-    if not (buf_old and buf_new) then return end
+M.get_buffers()
 
-    local cur_win = vim.api.nvim_get_current_win()
-    local pos = vim.api.nvim_win_get_cursor(cur_win)
-
-    for _, buf in ipairs { buf_old, buf_new } do
-        local win = panelpal.find_win_with_buf(buf, false)
-        if win then
-            vim.api.nvim_win_set_cursor(win, pos)
-        end
-    end
-end
-
-local function setup_autocmd_for_buffer()
-    for _, buf in ipairs { M.buf_old, M.buf_new } do
-        vim.api.nvim_create_autocmd("CursorMoved", {
-            group = M.augroup_id,
-            buffer = buf,
-            callback = function()
-                sync_diff_compare_cursor()
-            end
-        })
-    end
-end
-
--- -----------------------------------------------------------------------------
-
-function M.init()
-    vim.api.nvim_create_user_command("VcsDiff", M.show_diff, {
-        desc = "parse git diff in current workspace",
-        nargs = "?",
-        complete = "file",
-    })
-
-    local augroup_id = vim.api.nvim_create_augroup("vcs-helper", { clear = true })
-    M.augroup_id = augroup_id
-
-    vim.api.nvim_create_autocmd("FileType", {
-        group = augroup_id,
-        pattern = DIFF_FILE_TYPE,
-        callback = function()
-            setup_autocmd_for_buffer()
-        end,
-    })
-end
+api.nvim_create_autocmd("FileType", {
+    group = M.augroup_id,
+    pattern = DIFF_FILE_TYPE,
+    callback = function()
+        setup_autocmd_for_buffer()
+    end,
+})
 
 return M

@@ -10,25 +10,6 @@ local M = {}
 
 M.records = {}
 
-local function show_diff_info(index)
-    local diff = require "vcs-helper.commands.diff"
-
-    local info = M.records[index]
-    local path = vim.fn.getcwd() .. "/" .. info.path
-    local abs_path = systems.to_abs_path(path)
-    if not abs_path then
-        return
-    end
-
-    local records, abs_filename = diff.update_diff(abs_path)
-    if not records then
-        vim.notify("no diff info found for file: " .. path)
-        return
-    end
-
-    diff.open_diff_panel(abs_filename, records, false)
-end
-
 local function on_confirm_selection(files)
     if #files == 0 then
         vim.notify("no file chosen.")
@@ -52,12 +33,25 @@ local function on_confirm_selection(files)
     end
 end
 
----@param self SelectionPanel
----@param index integer
-local function on_select_commit_item(self, index)
+-- -----------------------------------------------------------------------------
+
+local commit_panel = SelectionPanel:new {
+    name = "vcs-commit",
+    height = 15,
+    multi_selection = true,
+}
+
+commit_panel:set_on_select(function(self, index)
     local len = #self.options
     if index < len then
-        show_diff_info(index)
+        local diff = require "vcs-helper.commands.diff"
+
+        local info = M.records[index]
+        local path = vim.fn.getcwd() .. "/" .. info.path
+        local err = diff.show_diff(path)
+        if err then
+            vim.notify(err)
+        end
     else
         local files = {}
         for i in pairs(self.selected) do
@@ -67,24 +61,21 @@ local function on_select_commit_item(self, index)
 
         on_confirm_selection(files)
     end
-end
+end)
 
----@param self SelectionPanel
----@param index integer
-local function check_commit_item_selection(self, index)
+commit_panel:set_selection_checker(function(self, index)
     local option = self.options[index]
     return option and option ~= ""
+end)
+
+-- -----------------------------------------------------------------------------
+
+---@return integer? bufnr
+function M.get_buffer()
+    return commit_panel:get_buffer()
 end
 
-local commit_panel = SelectionPanel:new {
-    name = "vcs-commit",
-    height = 15,
-    multi_selection = true,
-    on_select_callback = on_select_commit_item,
-    selection_checker = check_commit_item_selection,
-}
-
-function M.update_status()
+function M.show_commit()
     local records = systems.parse_status()
     M.records = records
 
@@ -100,26 +91,8 @@ function M.update_status()
     options[#options + 1] = CONFIRM_SELECTIOIN
 
     commit_panel.options = options
-end
-
-function M.open_commit_panel(in_new_tab)
-    if in_new_tab then
-        vim.cmd "tabnew"
-    end
-
     commit_panel:clear_selectioin()
-    commit_panel:show()
-end
-
-function M.show_commit()
-    M.update_status()
-    M.open_commit_panel(true)
-end
-
-function M.init()
-    vim.api.nvim_create_user_command("VcsCommit", M.show_commit, {
-        desc = "show current status, choose file for commit.",
-    })
+    commit_panel:update_options()
 end
 
 return M
