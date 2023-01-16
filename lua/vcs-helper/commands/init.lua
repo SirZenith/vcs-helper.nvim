@@ -56,6 +56,7 @@ function M.show_diff(args)
     tp:set_vsplit_buf(1, buf_old)
     tp:set_vsplit_buf(2, buf_new)
 
+    diff.reset()
     local err = diff.show(filename)
     if err then
         vim.notify(err)
@@ -85,6 +86,7 @@ function M.show_status()
         api.nvim_set_current_win(win)
     end
 
+    diff.reset()
     status.show()
 end
 
@@ -111,6 +113,7 @@ function M.show_commit()
         api.nvim_set_current_win(win)
     end
 
+    diff.reset()
     commit.show()
 end
 

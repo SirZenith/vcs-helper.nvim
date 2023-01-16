@@ -153,8 +153,11 @@ end
 ---@return string abs_filename
 function M.update_diff(filename)
     local abs_filename = vim.fs.normalize(systems.to_abs_path(filename))
-    systems.parse_diff(abs_filename)
     local records = systems.get_diff_record(abs_filename)
+    if not records then
+        systems.parse_diff(abs_filename)
+        records = systems.get_diff_record(abs_filename)
+    end
     return records, abs_filename
 end
 
@@ -193,6 +196,10 @@ function M.show(filename)
 
     local err = M.write_diff_record_to_buf(abs_filename, records)
     return err
+end
+
+function M.reset()
+    systems.clear_diff_records()
 end
 
 -- -----------------------------------------------------------------------------

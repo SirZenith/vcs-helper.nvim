@@ -397,14 +397,12 @@ function M.parse_diff(path)
     local abs_path = M.to_abs_path(path)
     local system = M.active_system
     if not (abs_path and system) then
-        M.record_map = {}
         return
     end
 
     local diff = system.diff_cmd(abs_path)
     local diff_lines = vim.split(diff, "\n")
     local len, index = #diff_lines, 1
-    local record_map = {}
 
     while index <= len do
         local st, ed = system.file_diff_range_cond:get_line_range(diff_lines, index)
@@ -412,13 +410,15 @@ function M.parse_diff(path)
 
         local filename, records = M.parse_diff_file(diff_lines, st, ed)
         if filename then
-            record_map[filename] = records
+            M.record_map[filename] = records
         end
 
         index = ed + 1
     end
+end
 
-    M.record_map = record_map
+function M.clear_diff_records()
+    M.record_map = {}
 end
 
 ---@param filename string
@@ -436,7 +436,6 @@ function M.get_diff_line(path)
     local abs_path = M.to_abs_path(path)
     local system = M.active_system
     if not (abs_path and system) then
-        M.record_map = {}
         return
     end
     local diff = system.diff_cmd(abs_path)
