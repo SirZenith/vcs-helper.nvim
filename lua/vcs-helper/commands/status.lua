@@ -19,7 +19,7 @@ status_panel:set_on_select(function(_, index)
     local diff = require "vcs-helper.commands.diff"
 
     local info = M.records[index]
-    local err = diff.show_diff(info.path)
+    local err = diff.show(info.path)
     if err then
         vim.notify(err)
     end
@@ -32,7 +32,7 @@ function M.get_buffer()
     return status_panel:get_buffer()
 end
 
-function M.show_status()
+function M.show()
     local records = systems.parse_status()
     M.records = records
 

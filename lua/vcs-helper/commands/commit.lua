@@ -11,6 +11,7 @@ local CONFIRM_SELECTIOIN = "Confirm"
 local M = {}
 
 M.records = {}
+M.index = 0
 
 local function on_confirm_selection(files)
     if #files == 0 then
@@ -49,7 +50,7 @@ commit_panel:set_on_select(function(self, index)
         local diff = require "vcs-helper.commands.diff"
 
         local info = M.records[index]
-        local err = diff.show_diff(info.path)
+        local err = diff.show(info.path)
         if err then
             vim.notify(err)
         end
@@ -76,7 +77,7 @@ function M.get_buffer()
     return commit_panel:get_buffer()
 end
 
-function M.show_commit()
+function M.show()
     local records = systems.parse_status()
     M.records = records
 

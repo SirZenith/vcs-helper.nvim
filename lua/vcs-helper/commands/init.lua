@@ -1,4 +1,5 @@
 local api = vim.api
+local fn = vim.fn
 local tabpage = require "panelpal.panels.tabpage"
 local systems = require "vcs-helper.systems"
 local commit = require "vcs-helper.commands.commit"
@@ -9,9 +10,29 @@ local TabPage = tabpage.TabPage
 
 local M = {}
 
+---@param self TabPage
+local function next_status_item(self)
+    local buf_bottom_panel = self.bufnr_bottom_panel
+    local buf_status = status.get_buffer()
+    if buf_bottom_panel == buf_status then
+        status.select_next()
+    end
+end
+
+---@param self TabPage
+local function prev_status_item(self)
+    local buf_bottom_panel = self.bufnr_bottom_panel
+    local buf_status = status.get_buffer()
+    if buf_bottom_panel == buf_status then
+        status.select_prev()
+    end
+end
+
 M.tabpage = TabPage:new {
     keymap = {
         toggle_bottom_panel = "<leader><backspace>",
+        ["<A-j>"] = next_status_item,
+        ["<A-k>"] = prev_status_item,
     }
 }
 
@@ -35,7 +56,7 @@ function M.show_diff(args)
     tp:set_vsplit_buf(1, buf_old)
     tp:set_vsplit_buf(2, buf_new)
 
-    local err = diff.show_diff(filename)
+    local err = diff.show(filename)
     if err then
         vim.notify(err)
     end
@@ -64,7 +85,7 @@ function M.show_status()
         api.nvim_set_current_win(win)
     end
 
-    status.show_status()
+    status.show()
 end
 
 function M.show_commit()
@@ -90,14 +111,13 @@ function M.show_commit()
         api.nvim_set_current_win(win)
     end
 
-    commit.show_commit()
+    commit.show()
 end
 
 function M.init()
     local create_cmd = api.nvim_create_user_command
 
     -- Diff
-
     create_cmd("VcsDiff", M.show_diff, {
         desc = "parse git diff in current workspace",
         nargs = "?",
@@ -105,7 +125,6 @@ function M.init()
     })
 
     -- Status
-
     create_cmd("VcsStatus", M.show_status, {
         desc = "show status of current repository."
     })
@@ -118,6 +137,7 @@ function M.init()
         desc = "select previous item in status list."
     })
 
+    -- Commit
     create_cmd("VcsCommit", M.show_commit, {
         desc = "show current status, choose file for commit.",
     })

@@ -174,7 +174,7 @@ end
 
 -- write diff content to diff buffers.
 ---@return string? err
-function M.show_diff(filename)
+function M.show(filename)
     if not filename then
         error("no file name given")
     end
