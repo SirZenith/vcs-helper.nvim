@@ -27,24 +27,6 @@ status_panel:set_on_select(function(_, index)
     M.cur_selection = index
 end)
 
-function M.select_prev()
-    local index = M.cur_selection - 1
-    if index < 1 then
-        return
-    end
-
-    status_panel:select(index)
-end
-
-function M.select_next()
-    local index = M.cur_selection + 1
-    if index > #M.records then
-        return
-    end
-
-    status_panel:select(index)
-end
-
 ---@return integer? bufnr
 function M.get_buffer()
     return status_panel:get_buffer()
@@ -68,5 +50,27 @@ function M.show_status()
     status_panel.options = options
     status_panel:update_options()
 end
+
+-- -----------------------------------------------------------------------------
+
+function M.select_prev()
+    local index = M.cur_selection - 1
+    if index < 1 then
+        return
+    end
+
+    status_panel:select(index)
+end
+
+function M.select_next()
+    local index = M.cur_selection + 1
+    if index > #M.records then
+        return
+    end
+
+    status_panel:select(index)
+end
+
+-- -----------------------------------------------------------------------------
 
 return M

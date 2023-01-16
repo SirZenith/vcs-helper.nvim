@@ -101,4 +101,6 @@ function M.show_commit()
     commit_panel:update_options()
 end
 
+-- -----------------------------------------------------------------------------
+
 return M

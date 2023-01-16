@@ -16,6 +16,7 @@ local M = {}
 M.augroup_id = api.nvim_create_augroup("vcs-helper.command.diff", { clear = true })
 M.buf_old = nil
 M.buf_new = nil
+M.records = nil
 
 -- -----------------------------------------------------------------------------
 
@@ -45,9 +46,32 @@ local function setup_autocmd_for_buffer(buf)
     })
 end
 
+---@param buf integer
+local function setup_keymap_for_buffer(buf)
+    local opts = { noremap = true, silent = true, buffer = buf }
+    vim.keymap.set("n", "<C-j>", M.next_diff, opts)
+    vim.keymap.set("n", "<C-k>", M.prev_diff, opts)
+end
+
+---@param key string
+---@param bufname string
+local function get_buffer(key, bufname)
+    local buf = M[key]
+    if not buf or not api.nvim_buf_is_valid(buf) then
+        buf = api.nvim_create_buf(false, true)
+        api.nvim_buf_set_name(buf, bufname)
+
+        vim.bo[buf].filetype = DIFF_FILE_TYPE
+        setup_autocmd_for_buffer(buf)
+        setup_keymap_for_buffer(buf)
+
+        M[key] = buf
+    end
+
+    return buf
+end
+
 -- -----------------------------------------------------------------------------
-
-
 
 ---@param filename string
 ---@return string[]?
@@ -90,8 +114,8 @@ function M.write_diff_record_to_buf(filename, records)
         return "failed to create diff buffer"
     end
 
-    vim.bo[buf_old].modifiable = true
-    vim.bo[buf_new].modifiable = true
+    vim.bo[buf_old].readonly = false
+    vim.bo[buf_new].readonly = false
 
     api.nvim_buf_set_lines(buf_old, 0, -1, true, {})
     api.nvim_buf_set_lines(buf_new, 0, -1, true, {})
@@ -120,8 +144,8 @@ function M.write_diff_record_to_buf(filename, records)
 
     read_common_lines(lines, line_input_index, #lines, buf_old, buf_new)
 
-    vim.bo[buf_old].modifiable = false
-    vim.bo[buf_new].modifiable = false
+    vim.bo[buf_old].readonly = true
+    vim.bo[buf_new].readonly = true
 end
 
 ---@param filename string
@@ -138,27 +162,8 @@ end
 ---@return integer? buf_old
 ---@return integer? buf_new
 function M.get_buffers()
-    local buf_old = M.buf_old
-    if not buf_old or not api.nvim_buf_is_valid(buf_old) then
-        buf_old = api.nvim_create_buf(false, true)
-        api.nvim_buf_set_name(buf_old, diff_panel_old_name)
-
-        vim.bo[buf_old].filetype = DIFF_FILE_TYPE
-        setup_autocmd_for_buffer(buf_old)
-
-        M.buf_old = buf_old
-    end
-
-    local buf_new = M.buf_new
-    if not buf_new or not api.nvim_buf_is_valid(buf_new) then
-        buf_new = api.nvim_create_buf(false, true)
-        api.nvim_buf_set_name(buf_new, diff_panel_new_name)
-
-        vim.bo[buf_new].filetype = DIFF_FILE_TYPE
-        setup_autocmd_for_buffer(buf_new)
-
-        M.buf_new = buf_new
-    end
+    local buf_old = get_buffer("buf_old", diff_panel_old_name)
+    local buf_new = get_buffer("buf_new", diff_panel_new_name)
 
     if buf_old * buf_new == 0 then
         return nil, nil
@@ -179,13 +184,102 @@ function M.show_diff(filename)
         return "failed to create diff buffer"
     end
 
+    M.records = nil
     local records, abs_filename = M.update_diff(filename)
     if not records then
         return "no diff info found for file: " .. filename
     end
+    M.records = records
 
     local err = M.write_diff_record_to_buf(abs_filename, records)
     return err
+end
+
+-- -----------------------------------------------------------------------------
+
+function M.next_diff()
+    local records = M.records
+    if not records then return end
+
+    local cur_buf = vim.fn.bufnr()
+
+    local buf_old, buf_new = M.get_buffers()
+    if not (buf_old and buf_new) then
+        return
+    elseif cur_buf ~= buf_old and cur_buf ~= buf_new then
+        return
+    elseif not (vim.bo[buf_old].readonly and vim.bo[buf_new].readonly) then
+        -- if thease buffers' content has been modified by this plugin,
+        -- they should have been set to readonly.
+        -- If they are not, then they are probably have not content.
+        return
+    end
+
+    local cur_line = api.nvim_win_get_cursor(0)[1]
+    local line_number
+    local extra = 0
+    for i = 1, #records do
+        local r = records[i]
+
+        local linenr = r.line + extra
+        if linenr > cur_line then
+            line_number = linenr
+            break
+        end
+
+        if r.type == DiffType.delete then
+            extra = extra + #r.new
+        end
+    end
+
+    if not line_number then
+        vim.notify("no next diff.")
+    else
+        api.nvim_win_set_cursor(0, {line_number, 0})
+    end
+end
+
+function M.prev_diff()
+    local records = M.records
+    if not records then return end
+
+    local cur_buf = vim.fn.bufnr()
+
+    local buf_old, buf_new = M.get_buffers()
+    if not (buf_old and buf_new) then
+        return
+    elseif cur_buf ~= buf_old and cur_buf ~= buf_new then
+        return
+    elseif not (vim.bo[buf_old].readonly and vim.bo[buf_new].readonly) then
+        -- if thease buffers' content has been modified by this plugin,
+        -- they should have been set to readonly.
+        -- If they are not, then they are probably have not content.
+        return
+    end
+
+    local cur_line = api.nvim_win_get_cursor(0)[1]
+    local line_number
+    local extra = 0
+    for i = 1, #records do
+        local r = records[i]
+
+        local linenr = r.line + extra
+        if linenr < cur_line then
+            line_number = linenr
+        else
+            break
+        end
+
+        if r.type == DiffType.delete then
+            extra = extra + #r.new
+        end
+    end
+
+    if not line_number then
+        vim.notify("no previous diff.")
+    else
+        api.nvim_win_set_cursor(0, {line_number, 0})
+    end
 end
 
 -- -----------------------------------------------------------------------------
