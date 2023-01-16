@@ -484,6 +484,10 @@ function M.parse_status(path)
         records[#records + 1] = system.parse_status_line(status_lines[i])
     end
 
+    table.sort(records, function(a, b)
+        return a.path < b.path
+    end)
+
     return records
 end
 
