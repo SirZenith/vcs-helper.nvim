@@ -83,7 +83,7 @@ function M.parse_status_line(line)
     path = vim.fs.normalize(path)
 
     return {
-        local_status = status:sub(1),
+        local_status = status:sub(1, 1),
         path = systems.read_quoted_string(path),
     }
 end
