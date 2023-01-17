@@ -53,8 +53,7 @@ end
 
 -- -----------------------------------------------------------------------------
 
-local STATUS_LINE_PATT = "(.......) (.+)"
-local STATUS_PATH_PAIR_PATT = "(.+) %-> (.+)"
+local STATUS_LINE_PATT = "([ ADMRCXI%?!~])([ MC])([ L])([ %+])([ S])([ KOTB])([ C]) (.+)"
 
 ---@enum SvnStatusPrefix
 local StatusPrefix = {
@@ -77,13 +76,13 @@ local StatusPrefix = {
 ---@param line string
 ---@return StatusRecord?
 function M.parse_status_line(line)
-    local status, path = line:match(STATUS_LINE_PATT)
+    local status, _, _, _, _, _, _, path = line:match(STATUS_LINE_PATT)
     if not (status and path) then return end
 
     path = vim.fs.normalize(path)
 
     return {
-        local_status = status:sub(1, 1),
+        local_status = status,
         path = systems.read_quoted_string(path),
     }
 end
