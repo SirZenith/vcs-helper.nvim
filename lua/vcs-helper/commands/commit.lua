@@ -4,8 +4,6 @@ local selection_panel = require "panelpal.panels.selection_panel"
 
 local SelectionPanel = selection_panel.SelectionPanel
 
-local starts_with = systems.starts_with
-
 local CONFIRM_SELECTIOIN = "Confirm"
 
 local M = {}
@@ -19,21 +17,31 @@ local function on_confirm_selection(files)
         return
     end
 
-    local prompt = "Are you sure you want to commit chosen file(s)?"
-    local ok = panelpal.ask_for_confirmation(prompt)
-    if not ok then return end
-
-    local msg = vim.fn.input("Commit message: ") or ""
-    local white_st, white_ed = msg:find("%s+")
-    if msg == "" or (white_st == 1 and white_ed == #msg) then
-        vim.notify("empty message, commit abort.")
-        return
+    local lines = {
+        "Are you sure you want to commit chosen file(s)?",
+        "",
+    }
+    for _, file in ipairs(files) do
+        lines[#lines + 1] = "- " .. systems.path_simplify(file)
     end
 
-    local err = systems.commit(files, msg)
-    if err then
-        vim.notify(err)
-    end
+    panelpal.ask_for_confirmation_with_popup(lines, function(ok)
+        if not ok then
+            vim.notify("commit canceled.")
+            return
+        end
+
+        local msg = vim.fn.input("Commit message: ") or ""
+        if msg == "" or msg:match("%s+") == msg then
+            vim.notify("empty message, commit abort.")
+            return
+        end
+
+        local err = systems.commit(files, msg)
+        if err then
+            vim.notify(err)
+        end
+    end)
 end
 
 -- -----------------------------------------------------------------------------
@@ -84,11 +92,7 @@ function M.show()
     local options = {}
     for i = 1, #records do
         local r = records[i]
-        local path = r.path
-        local cwd = vim.fs.normalize(vim.fn.getcwd())
-        if starts_with(path, cwd) then
-            path = "." .. path:sub(#cwd + 1)
-        end
+        local path = systems.path_simplify(r.path)
         options[#options + 1] = r.local_status .. " " .. path
     end
 

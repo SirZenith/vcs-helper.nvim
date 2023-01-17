@@ -128,6 +128,22 @@ function M.to_abs_path(path)
     return table.concat(result_segments, "/")
 end
 
+---@param path string
+---@return string
+function M.path_simplify(path)
+    path = vim.fs.normalize(path)
+    local pwd = vim.fs.normalize(vim.fn.getcwd())
+    local repo_root = M.root_dir
+
+    if M.starts_with(path, pwd) then
+        path = "." .. path:sub(#pwd + 1)
+    elseif M.starts_with(path, repo_root) then
+        path = "{repo-root}" .. path:sub(#repo_root + 1)
+    end
+
+    return path
+end
+
 local CHAR_ESCAPE_MAP = {
     ["a"] = "\a",
     ["b"] = "\b",

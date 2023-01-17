@@ -3,8 +3,6 @@ local selection_panel = require "panelpal.panels.selection_panel"
 
 local SelectionPanel = selection_panel.SelectionPanel
 
-local starts_with = systems.starts_with
-
 local M = {}
 
 M.records = {}
@@ -39,11 +37,7 @@ function M.show()
     local options = {}
     for i = 1, #records do
         local r = records[i]
-        local path = r.path
-        local cwd = vim.fs.normalize(vim.fn.getcwd())
-        if starts_with(path, cwd) then
-            path = "." .. path:sub(#cwd + 1)
-        end
+        local path = systems.path_simplify(r.path)
         options[#options + 1] = r.local_status .. " " .. path
     end
 
