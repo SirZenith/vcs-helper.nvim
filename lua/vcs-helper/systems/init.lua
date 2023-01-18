@@ -87,11 +87,8 @@ end
 ---@param path string
 ---@return boolean
 function M.is_abs_path(path)
-    if vim.fn.has("win32") then
-        return path:match("%a:[/\\]") ~= nil
-    else
-        return path:sub(1, 1) == "/"
-    end
+    return path:match("%a:[/\\]") ~= nil
+        or path:sub(1, 1) == "/"
 end
 
 ---@param path string
@@ -99,18 +96,19 @@ end
 function M.to_abs_path(path)
     if M.is_abs_path(path) then return path end
 
-    local pwd = vim.fn.getcwd()
-    pwd = vim.fs.normalize(pwd)
+    local pwd = vim.fs.normalize(vim.fn.getcwd())
     path = vim.fs.normalize(path)
 
     local result_segments = vim.split(pwd, "/")
     local path_segments = vim.split(path, "/")
+    if #path_segments == 0 then
+        path_segments = { path }
+    end
 
     for _, seg in ipairs(path_segments) do
-        local white_st, white_ed = seg:match("%s+")
         if seg == ""
             or seg == "."
-            or (white_st == 1 and white_ed == #seg)
+            or seg:match("%s+") == seg
         then
             -- pass
         elseif seg == ".." then
