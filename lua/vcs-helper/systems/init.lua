@@ -334,7 +334,7 @@ end
 ---@param ed integer # ending index of target hunk region in diff_lines (including).
 ---@return DiffRecord[]
 function M.parse_diff_hunk(diff_lines, st, ed)
-    local _, _, new_st_line_number, _ = diff_lines[st]:match(M.HEADER_HUNK_PATT)
+    local _, _, new_st_line_number, new_line_cnt = diff_lines[st]:match(M.HEADER_HUNK_PATT)
 
     local records = {}
     local buffer_old, buffer_new = {}, {}
@@ -342,6 +342,7 @@ function M.parse_diff_hunk(diff_lines, st, ed)
     -- current line number in current working copy
     local cur_line_num = new_st_line_number - 1
     local last_common_line_num = cur_line_num
+    local ed_line_num = new_st_line_number + new_line_cnt - 1
 
     -- skip hunk header then loop through hunk content
     for index = st + 1, ed do
@@ -370,7 +371,7 @@ function M.parse_diff_hunk(diff_lines, st, ed)
         end
     end
 
-    if last_common_line_num < ed then
+    if last_common_line_num < ed_line_num then
         M.add_diff_record(
             records, last_common_line_num + 1, buffer_old, buffer_new
         )
