@@ -186,16 +186,22 @@ function M.read_quoted_string(str)
     return table.concat(buf)
 end
 
+---@param path string
+---@return boolean
+function M.path_exists(path)
+    return vim.fn.filereadable(path) == 1 or vim.fn.isdirectory(path) == 1
+end
+
 ---@param pwd string
 ---@param target string
 function M.find_root_by_keyfile(pwd, target)
-    if vim.fn.isdirectory(pwd .. "/" .. target) == 1 then
+    if M.path_exists(pwd .. "/" .. target) then
         return pwd
     end
 
     local root_dir
     for dir in vim.fs.parents(pwd) do
-        if vim.fn.isdirectory(dir .. "/" .. target) == 1 then
+        if M.path_exists(dir .. "/" .. target) then
             root_dir = dir
             break
         end
