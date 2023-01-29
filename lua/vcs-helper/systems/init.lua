@@ -213,6 +213,8 @@ end
 -- -------------------------------------------------------------------------------
 -- Diff
 
+local DIFF_EOF_NEW_LINE = "EOF NEWLINE"
+
 ---@enum Header
 local Header = {
     old_file = "---",
@@ -225,7 +227,8 @@ M.Header = Header
 local DiffPrefix = {
     old = "-",
     new = "+",
-    common = " "
+    common = " ",
+    no_newline_at_eof = "\\",
 }
 M.LinePrefix = DiffPrefix
 
@@ -343,6 +346,7 @@ function M.parse_diff_hunk(diff_lines, st, ed)
     local cur_line_num = new_st_line_number - 1
     local last_common_line_num = cur_line_num
     local ed_line_num = new_st_line_number + new_line_cnt - 1
+    local last_sign = nil
 
     -- skip hunk header then loop through hunk content
     for index = st + 1, ed do
@@ -366,9 +370,21 @@ function M.parse_diff_hunk(diff_lines, st, ed)
             end
 
             last_common_line_num = cur_line_num
+        elseif DiffPrefix.no_newline_at_eof then
+            -- pass
         else
             break
         end
+
+        if last_sign == DiffPrefix.no_newline_at_eof then
+            if sign == DiffPrefix.old then
+                buffer_old[#buffer_old + 1] = DIFF_EOF_NEW_LINE
+            elseif sign == DiffPrefix.new then
+                buffer_new[#buffer_new + 1] = DIFF_EOF_NEW_LINE
+            end
+        end
+
+        last_sign = sign
     end
 
     if last_common_line_num < ed_line_num then
