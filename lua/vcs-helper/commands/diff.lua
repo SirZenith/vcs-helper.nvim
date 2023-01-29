@@ -200,6 +200,13 @@ end
 
 function M.reset()
     systems.clear_diff_records()
+
+    local buf_old, buf_new = M.get_buffers()
+    for _, buf in ipairs { buf_old, buf_new } do
+        vim.bo[buf].readonly = false
+        panelpal.clear_buffer_contnet(buf)
+        vim.bo[buf].readonly = true
+    end
 end
 
 -- -----------------------------------------------------------------------------
