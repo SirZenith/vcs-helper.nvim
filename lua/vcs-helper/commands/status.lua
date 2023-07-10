@@ -42,6 +42,7 @@ function M.show()
     end
 
     status_panel.options = options
+    status_panel:clear_selectioin()
     status_panel:update_options()
 end
 
