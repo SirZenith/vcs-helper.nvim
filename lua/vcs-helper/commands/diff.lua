@@ -73,6 +73,16 @@ end
 
 -- -----------------------------------------------------------------------------
 
+---@param lines string[]
+---@return string[]
+local function map_empty_lines(lines)
+    local buffer = {}
+    for _, line in ipairs(lines) do
+        table.insert(buffer, line ~= "" and line or "↩")
+    end
+    return buffer
+end
+
 ---@param filename string
 ---@return string[]?
 ---@return string? err
@@ -122,7 +132,7 @@ function M.write_diff_record_to_buf(filename, records)
 
     local lines, err = read_file_lines(filename)
     if not lines then
-        vim.notify(err)
+        vim.notify(err or "")
         return
     end
 
@@ -132,9 +142,9 @@ function M.write_diff_record_to_buf(filename, records)
 
         read_common_lines(lines, line_input_index, linenumber - 1, buf_old, buf_new)
 
-        local buffer_new = record.new
-        local buffer_old = record.old
         local difftype = record.type
+        local buffer_new = difftype == DiffType.insert and map_empty_lines(record.new) or record.new
+        local buffer_old = difftype == DiffType.delete and map_empty_lines(record.old) or record.old
         panelpal.write_to_buf_with_highlight(buf_old, difftype, buffer_old, UpdateMethod.append)
         panelpal.write_to_buf_with_highlight(buf_new, difftype, buffer_new, UpdateMethod.append)
 
