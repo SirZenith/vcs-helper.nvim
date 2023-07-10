@@ -54,6 +54,7 @@ local commit_panel = SelectionPanel:new {
 
 commit_panel:set_on_select(function(self, index)
     local len = #self.options
+    -- the last item of options, is `Confirm`
     if index < len then
         local diff = require "vcs-helper.commands.diff"
 
