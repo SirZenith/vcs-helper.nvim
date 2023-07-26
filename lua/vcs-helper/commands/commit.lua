@@ -37,10 +37,17 @@ local function on_confirm_selection(files)
             return
         end
 
-        local err = systems.commit(files, msg)
-        if err then
-            vim.notify(err)
-        end
+        panelpal.ask_for_confirmation_with_popup({ "Commit message:", msg }, function(msg_ok)
+            if not msg_ok then
+                vim.notify("commit abort.")
+                return
+            end
+
+            local err = systems.commit(files, msg)
+            if err then
+                vim.notify(err)
+            end
+        end)
     end)
 end
 
