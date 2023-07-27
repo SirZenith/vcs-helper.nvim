@@ -37,6 +37,12 @@ local function on_confirm_selection(files)
             return
         end
 
+        ok = panelpal.ask_for_confirmation(("Your commit message is `%s`"):format(msg))
+        if not ok then
+            vim.notify("commit abort.")
+            return
+        end
+
         local err = systems.commit(files, msg)
         if err then
             vim.notify(err)
@@ -89,7 +95,16 @@ function M.get_buffer()
 end
 
 function M.show()
-    local records = systems.parse_status()
+    local parsed_records = systems.parse_status()
+    local records = {}
+    for i = 1, #parsed_records do
+        local r = parsed_records[i]
+        local local_status = r.local_status
+
+        if local_status and local_status ~= " " then
+            records[#records+1] = r
+        end
+    end
     M.records = records
 
     local options = {}
