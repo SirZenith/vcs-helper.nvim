@@ -40,6 +40,8 @@ local function on_confirm_selection(files)
         local err = systems.commit(files, msg)
         if err then
             vim.notify(err)
+        else
+            vim.notify("commit complete")
         end
     end)
 end
