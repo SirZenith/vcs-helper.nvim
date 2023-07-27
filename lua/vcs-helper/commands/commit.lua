@@ -93,18 +93,23 @@ function M.get_buffer()
 end
 
 function M.show()
-    local records = systems.parse_status()
+    local parsed_records = systems.parse_status()
+    local records = {}
+    for i = 1, #parsed_records do
+        local r = parsed_records[i]
+        local local_status = r.local_status
+
+        if local_status and local_status ~= " " then
+            records[#records+1] = r
+        end
+    end
     M.records = records
 
     local options = {}
     for i = 1, #records do
         local r = records[i]
-        local local_status = r.local_status
-
-        if local_status and local_status ~= " " then
-            local path = systems.path_simplify(r.path)
-            options[#options + 1] = local_status .. " " .. path
-        end
+        local path = systems.path_simplify(r.path)
+        options[#options + 1] = r.local_status .. " " .. path
     end
 
     for _ = 1, 2 do
