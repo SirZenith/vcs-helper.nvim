@@ -37,17 +37,16 @@ local function on_confirm_selection(files)
             return
         end
 
-        panelpal.ask_for_confirmation_with_popup({ "Commit message:", msg }, function(msg_ok)
-            if not msg_ok then
-                vim.notify("commit abort.")
-                return
-            end
+        ok = panelpal.ask_for_confirmation(("Your commit message is `%s`"):format(msg))
+        if not ok then
+            vim.notify("commit abort.")
+            return
+        end
 
-            local err = systems.commit(files, msg)
-            if err then
-                vim.notify(err)
-            end
-        end)
+        local err = systems.commit(files, msg)
+        if err then
+            vim.notify(err)
+        end
     end)
 end
 
@@ -100,8 +99,12 @@ function M.show()
     local options = {}
     for i = 1, #records do
         local r = records[i]
-        local path = systems.path_simplify(r.path)
-        options[#options + 1] = r.local_status .. " " .. path
+        local local_status = r.local_status
+
+        if local_status and local_status ~= " " then
+            local path = systems.path_simplify(r.path)
+            options[#options + 1] = local_status .. " " .. path
+        end
     end
 
     for _ = 1, 2 do
