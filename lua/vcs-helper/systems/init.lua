@@ -2,25 +2,11 @@ local M = {}
 
 M.HEADER_HUNK_PATT = "@@ %-(%d-),(%d-) %+(%d-),(%d-) @@"
 
----@class VcsSystem
---
----@field file_diff_range_cond LineRangeCondition
----@field get_file_path fun(diff_lines: string[], st: integer, ed: integer): string
----@field get_file_diff_header_len fun(diff_lines: string[], st: integer, ed: integer): integer
---
----@field parse_status_line fun(line: string): StatusRecord
---
----@field diff_cmd fun(root: string): string
----@field status_cmd fun(root: string): string
----@field commit_cmd fun(files: string[], msg: string): string?
---
----@field find_root fun(pwd: string): string?
-
----@type VcsSystem?
+---@type vsc-helper.VcsSystem?
 M.active_system = nil
 M.root_dir = "."
 
----@type {[string]: DiffRecord[]}
+---@type {[string]: vcs-helper.DiffRecord[]}
 M.record_map = {}
 
 function M.starts_with(s, prefix)
@@ -35,12 +21,19 @@ end
 -- -----------------------------------------------------------------------------
 -- Range extraction
 
----@class LineRangeCondition
+-- Representing grouping condition of lines of text, can be used to slice lines
+-- into several chunks.
+---@class vcs-helper.LineRangeCondition
 ---@field st_cond fun(lines: string[], index: integer): boolean
 ---@field ed_cond fun(lines: string[], index: integer, range_st: integer): boolean
 local LineRangeCondition = {}
 M.LineRangeCondition = LineRangeCondition
 
+-- Creates new line range condition with given condition function.
+-- Each condition function will be called with lines array and index of current
+-- position.
+-- Condition function is free to look forward or backward to determine if current
+-- line is a valid rankge start/end.
 ---@param st_cond fun(lines: string[], index: integer): boolean
 ---@param ed_cond fun(lines: string[], index: integer, range_st: integer): boolean
 function LineRangeCondition:new(st_cond, ed_cond)
@@ -54,6 +47,10 @@ function LineRangeCondition:new(st_cond, ed_cond)
     return setmetatable(obj, self)
 end
 
+-- Given lines array and position index, returns next range closest to current
+-- position.
+-- Returned range is inclusive on both end, if no range is found, both `st` and
+-- `ed` would be `nil`.
 ---@param lines string[]
 ---@param index integer
 ---@return integer? st
@@ -215,7 +212,7 @@ end
 
 local DIFF_EOF_NEW_LINE = "EOF NEWLINE"
 
----@enum Header
+---@enum vcs-helper.Header
 local Header = {
     old_file = "---",
     new_file = "+++",
@@ -223,7 +220,7 @@ local Header = {
 }
 M.Header = Header
 
----@enum LinePrefix
+---@enum vcs-helper.LinePrefix
 local DiffPrefix = {
     old = "-",
     new = "+",
@@ -232,7 +229,7 @@ local DiffPrefix = {
 }
 M.LinePrefix = DiffPrefix
 
----@enum DiffType
+---@enum vcs-helper.DiffType
 local DiffType = {
     none = "DiffNone",
     common = "DiffCommon",
@@ -258,13 +255,7 @@ M.hunk_diff_range_cond = LineRangeCondition:new(
     end
 )
 
----@class DiffRecord
----@field line integer # starting line number of this diff range.
----@field type DiffType
----@field old string[] # lines of old file.
----@field new string[] # lines of working copy.
-
----@param list DiffRecord[]
+---@param list vcs-helper.DiffRecord[]
 ---@param line_num integer # line number in working copy where this diff range starts.
 ---@param buffer_old string[] # modified lines in old file.
 ---@param buffer_new string[] # modified lines in working copy.
@@ -335,7 +326,7 @@ end
 ---@param diff_lines string[]
 ---@param st integer # starting index of target hunk region in diff_lines.
 ---@param ed integer # ending index of target hunk region in diff_lines (including).
----@return DiffRecord[]
+---@return vcs-helper.DiffRecord[]
 function M.parse_diff_hunk(diff_lines, st, ed)
     local _, _, new_st_line_number, new_line_cnt = diff_lines[st]:match(M.HEADER_HUNK_PATT)
 
@@ -400,7 +391,7 @@ end
 ---@param st integer
 ---@param ed integer
 ---@return string filename
----@return DiffRecord[] records
+---@return vcs-helper.DiffRecord[] records
 function M.parse_diff_file(diff_lines, st, ed)
     local system = M.active_system
     if not system then return "", {} end
@@ -459,7 +450,7 @@ function M.clear_diff_records()
 end
 
 ---@param filename string
----@return DiffRecord[]?
+---@return vcs-helper.DiffRecord[]?
 function M.get_diff_record(filename)
     local abs_filename = M.to_abs_path(filename)
     if not abs_filename then return end
@@ -482,13 +473,7 @@ end
 -- -----------------------------------------------------------------------------
 -- Status
 
----@class StatusRecord
----@field upstream_status StatusType
----@field local_status StatusType
----@field path string
----@field orig_path string?
-
----@enum StatusType
+---@enum vcs-helper.StatusType
 local StatusType = {
     modify = "StatusModify",
     typechange = "StatusTypeChange",

@@ -1,5 +1,4 @@
 local api = vim.api
-local fn = vim.fn
 local tabpage = require "panelpal.panels.tabpage"
 local systems = require "vcs-helper.systems"
 local commit = require "vcs-helper.commands.commit"
