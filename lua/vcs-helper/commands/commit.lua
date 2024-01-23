@@ -25,7 +25,7 @@ local function on_confirm_selection(files)
         "",
     }
     for _, file in ipairs(files) do
-        lines[#lines + 1] = "- " .. path_util.path_simplify(file)
+        lines[#lines + 1] = "- " .. path_util.path_simplify(systems.root_dir, file)
     end
 
     util.do_async_steps {
@@ -129,7 +129,7 @@ function M.show()
         local options = {}
         for i = 1, #records do
             local r = records[i]
-            local path = path_util.path_simplify(r.path)
+            local path = path_util.path_simplify(systems.root_dir, r.path)
             options[#options + 1] = r.local_status .. " " .. path
         end
 

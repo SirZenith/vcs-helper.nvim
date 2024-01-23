@@ -64,7 +64,7 @@ function M.get_diff_lines(path)
         return
     end
     local diff = system.diff_cmd(abs_path)
-    return vim.split(diff, "\n")
+    return vim.split(diff, "\r?\n")
 end
 
 -- -----------------------------------------------------------------------------
@@ -88,7 +88,7 @@ function M.parse_status(path, callback)
             return
         end
 
-        local status_lines = vim.split(status, "\n")
+        local status_lines = vim.split(status, "\r?\n")
         local records = {}
 
         for i = 1, #status_lines do

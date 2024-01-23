@@ -44,12 +44,12 @@ function M.to_abs_path(path)
     return table.concat(result_segments, "/")
 end
 
+---@param repo_root string # path to respository root
 ---@param path string
 ---@return string
-function M.path_simplify(path)
+function M.path_simplify(repo_root, path)
     path = vim.fs.normalize(path)
     local pwd = vim.fs.normalize(vim.fn.getcwd())
-    local repo_root = M.root_dir
 
     if str_util.starts_with(path, pwd) then
         path = "." .. path:sub(#pwd + 1)
