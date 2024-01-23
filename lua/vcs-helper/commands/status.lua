@@ -44,7 +44,6 @@ function M.show()
         local options = {}
         for i = 1, #records do
             local r = records[i]
-            vim.print(r)
             local path = path_util.path_simplify(systems.root_dir, r.path)
             options[#options + 1] = r.local_status .. " " .. path
         end
