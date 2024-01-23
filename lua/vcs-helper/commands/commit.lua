@@ -110,33 +110,38 @@ function M.get_buffer()
 end
 
 function M.show()
-    local parsed_records = systems.parse_status()
-    local records = {}
-    for i = 1, #parsed_records do
-        local r = parsed_records[i]
-        local local_status = r.local_status
-
-        if local_status and local_status ~= " " then
-            records[#records + 1] = r
+    systems.parse_status(nil, function(err, parsed_records)
+        if err or not parsed_records then
+            vim.notify(err or "failed to get status", vim.log.levels.WARN)
+            return
         end
-    end
-    M.records = records
+        local records = {}
+        for i = 1, #parsed_records do
+            local r = parsed_records[i]
+            local local_status = r.local_status
 
-    local options = {}
-    for i = 1, #records do
-        local r = records[i]
-        local path = path_util.path_simplify(r.path)
-        options[#options + 1] = r.local_status .. " " .. path
-    end
+            if local_status and local_status ~= " " then
+                records[#records + 1] = r
+            end
+        end
+        M.records = records
 
-    for _ = 1, 2 do
-        options[#options + 1] = ""
-    end
-    options[#options + 1] = CONFIRM_SELECTIOIN
+        local options = {}
+        for i = 1, #records do
+            local r = records[i]
+            local path = path_util.path_simplify(r.path)
+            options[#options + 1] = r.local_status .. " " .. path
+        end
 
-    commit_panel.options = options
-    commit_panel:clear_selectioin()
-    commit_panel:update_options()
+        for _ = 1, 2 do
+            options[#options + 1] = ""
+        end
+        options[#options + 1] = CONFIRM_SELECTIOIN
+
+        commit_panel.options = options
+        commit_panel:clear_selectioin()
+        commit_panel:update_options()
+    end)
 end
 
 -- -----------------------------------------------------------------------------

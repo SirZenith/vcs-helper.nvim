@@ -95,9 +95,21 @@ function M.diff_cmd(root)
 end
 
 ---@param root string # root path of repository
----@return string
-function M.status_cmd(root)
-    return vim.fn.system("svn status " .. root)
+---@param callback fun(err?: string, result: string)
+function M.status_cmd(root, callback)
+    util.run_cmd("svn", { "status", root }, function(result)
+        if result.code == 0 then
+            callback(nil, result.stdout)
+            return
+        end
+
+        local err = result.stderr
+        if err == "" then
+            err = "failed to get repository status"
+        end
+
+        callback(err, "")
+    end)
 end
 
 ---@param files string[]

@@ -208,8 +208,6 @@ function M.parse_diff_file(system, root_path, diff_lines, st, ed)
     local len = #diff_lines
     ed = ed <= len and ed or len
 
-    print(system, root_path, diff_lines, st, ed)
-
     local filename = system.get_file_path(root_path, diff_lines, st, ed)
     filename = vim.fs.normalize(path_util.to_abs_path(filename))
 

@@ -71,8 +71,8 @@ end
 -- Status
 
 ---@param path? string
----@return vcs-helper.StatusRecord[]
-function M.parse_status(path)
+---@param callback fun(err?: string, records?: vcs-helper.StatusRecord[])
+function M.parse_status(path, callback)
     path = path or M.root_dir
     if not path then return {} end
 
@@ -82,19 +82,25 @@ function M.parse_status(path)
         return {}
     end
 
-    local status = system.status_cmd(abs_path)
-    local status_lines = vim.split(status, "\n")
-    local records = {}
+    system.status_cmd(abs_path, function(err, status)
+        if err then
+            callback(err)
+            return
+        end
 
-    for i = 1, #status_lines do
-        records[#records + 1] = system.parse_status_line(status_lines[i])
-    end
+        local status_lines = vim.split(status, "\n")
+        local records = {}
 
-    table.sort(records, function(a, b)
-        return a.path < b.path
+        for i = 1, #status_lines do
+            records[#records + 1] = system.parse_status_line(status_lines[i])
+        end
+
+        table.sort(records, function(a, b)
+            return a.path < b.path
+        end)
+
+        callback(nil, records)
     end)
-
-    return records
 end
 
 -- -----------------------------------------------------------------------------

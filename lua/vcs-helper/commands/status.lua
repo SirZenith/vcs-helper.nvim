@@ -33,19 +33,25 @@ function M.get_buffer()
 end
 
 function M.show()
-    local records = systems.parse_status()
-    M.records = records
+    systems.parse_status(nil, function(err, records)
+        if err or not records then
+            vim.notify(err or "failed to get status", vim.log.levels.WARN)
+            return
+        end
 
-    local options = {}
-    for i = 1, #records do
-        local r = records[i]
-        local path = path_util.path_simplify(r.path)
-        options[#options + 1] = r.local_status .. " " .. path
-    end
+        M.records = records
 
-    status_panel.options = options
-    status_panel:clear_selectioin()
-    status_panel:update_options()
+        local options = {}
+        for i = 1, #records do
+            local r = records[i]
+            local path = path_util.path_simplify(r.path)
+            options[#options + 1] = r.local_status .. " " .. path
+        end
+
+        status_panel.options = options
+        status_panel:clear_selectioin()
+        status_panel:update_options()
+    end)
 end
 
 -- -----------------------------------------------------------------------------

@@ -65,8 +65,8 @@ end
 
 -- Run status command on given root directory.
 ---@param root string
----@return string cmd_result
-function VcsSystem.status_cmd(root)
+---@param callback fun(err?: string, result: string)
+function VcsSystem.status_cmd(root, callback)
 end
 
 -- Commit file(s) with given message.
