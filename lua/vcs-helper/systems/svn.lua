@@ -1,4 +1,5 @@
 local sys_base = require "vcs-helper.systems.base"
+local util = require "vcs-helper.util"
 local path_util = require "vcs-helper.util.path"
 local str_util = require "vcs-helper.util.str"
 
@@ -101,14 +102,24 @@ end
 
 ---@param files string[]
 ---@param msg string
----@return string? err
-function M.commit_cmd(files, msg)
-    local line = '"' .. table.concat(files, '" "') .. '"'
-    local output = vim.fn.system('svn commit -m "' .. msg .. '" ' .. line)
-    if vim.v.shell_error ~= 0 then
-        vim.notify(output)
-        return "failed to commit files"
-    end
+---@param callback fun(err?: string)
+function M.commit_cmd(files, msg, callback)
+    local cmd = "svn"
+    local args = vim.list_extend({ "commit", "-m", msg }, files)
+
+    util.run_cmd(cmd, args, function(result)
+        if result.code == 0 then
+            callback()
+            return
+        end
+
+        local err = result.stderr
+        if err == "" then
+            err = "failed to commit files"
+        end
+
+        callback(err)
+    end)
 end
 
 -- -----------------------------------------------------------------------------
