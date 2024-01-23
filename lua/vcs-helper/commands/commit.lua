@@ -57,7 +57,7 @@ local function on_confirm_selection(files)
                 systems.commit(files, msg, next_step)
             end
         end,
-        function(err)
+        function(_, err)
             if err then
                 vim.notify(err, vim.log.levels.WARN)
             else
