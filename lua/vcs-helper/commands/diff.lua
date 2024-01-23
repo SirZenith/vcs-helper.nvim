@@ -2,9 +2,11 @@ local panelpal = require "panelpal"
 
 local api = vim.api
 local systems = require "vcs-helper.systems"
+local sys_base = require "vcs-helper.systems.base"
+local path_util = require "vcs-helper.util.path"
 local ui_diff_util = require "vcs-helper.ui_utils.diff"
 
-local DiffType = systems.DiffType
+local DiffType = sys_base.DiffType
 
 local diff_panel_namespace = "vschelper.diff"
 local diff_panel_old_name = diff_panel_namespace .. ".old"
@@ -95,7 +97,7 @@ end
 ---@return vcs-helper.DiffRecord[]?
 ---@return string abs_filename
 function M.update_diff(filename)
-    local abs_filename = vim.fs.normalize(systems.to_abs_path(filename))
+    local abs_filename = vim.fs.normalize(path_util.to_abs_path(filename))
     local records = systems.get_diff_record(abs_filename)
     if not records then
         systems.parse_diff(abs_filename)

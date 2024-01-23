@@ -1,11 +1,26 @@
-local systems = require "vcs-helper.systems"
+local sys_base = require "vcs-helper.systems.base"
+local util = require "vcs-helper.util"
+local path_util = require "vcs-helper.util.path"
+local str_util = require "vcs-helper.util.str"
 
-local Header = systems.Header
-local LineRangeConditioin = systems.LineRangeCondition
+local Header = sys_base.Header
+local LineRangeConditioin = str_util.LineRangeCondition
+local starts_with = str_util.starts_with
 
-local starts_with = systems.starts_with
-
+---@class vcs-helper.system.Git : vsc-helper.VcsSystem
 local M = {}
+
+-- ----------------------------------------------------------------------------
+
+---@param pwd string
+---@return string?
+function M.find_root(pwd)
+    if vim.fn.executable("git") == 0 then
+        return
+    end
+
+    return path_util.find_root_by_keyfile(pwd, ".git")
+end
 
 -- -----------------------------------------------------------------------------
 -- Diff
@@ -34,11 +49,12 @@ M.file_diff_range_cond = LineRangeConditioin:new(
     end
 )
 
+---@param root_path string # path of repository root.
 ---@param diff_lines string[]
 ---@param st integer # starting index of file diff region.
 ---@param _ integer # ending index of file diff region (including).
 ---@return string
-function M.get_file_path(diff_lines, st, _)
+function M.get_file_path(root_path, diff_lines, st, _)
     local header_line = diff_lines[st + 3]
     local prefixed_path = header_line:match(M.HEADER_NEW_FILE_PATT)
 
@@ -49,7 +65,7 @@ function M.get_file_path(diff_lines, st, _)
         end
     end
 
-    local path =  systems.to_abs_path(systems.root_dir .. "/" .. prefixed_path)
+    local path = path_util.to_abs_path(root_path .. "/" .. prefixed_path)
     path = vim.fs.normalize(path)
 
     return path
@@ -66,7 +82,7 @@ end
 local STATUS_LINE_PATT = "([ %?%a])([ %?%a]) (.+)"
 local STATUS_PATH_PAIR_PATT = "(.+) %-> (.+)"
 
----@enum GitStatusPrefix
+---@enum vcs-helper.system.git.StatusPrefix
 local StatusPrefix = {
     nochange = " ",
     modify = "M",
@@ -81,7 +97,7 @@ local StatusPrefix = {
 }
 
 ---@param line string
----@return StatusRecord?
+---@return vcs-helper.StatusRecord?
 function M.parse_status_line(line)
     local upstream_status, local_status, path_info = line:match(STATUS_LINE_PATT)
     if not (upstream_status and local_status and path_info) then
@@ -90,14 +106,14 @@ function M.parse_status_line(line)
 
     local orig_path, path = path_info:match(STATUS_PATH_PAIR_PATT)
     path = path and path or path_info
-    path = vim.fn.getcwd() .. "/" .. systems.read_quoted_string(path)
+    path = vim.fn.getcwd() .. "/" .. str_util.read_quoted_string(path)
     path = vim.fs.normalize(path)
 
     return {
         upstream_status = upstream_status,
         local_status = local_status,
         path = path,
-        orig_path = orig_path and systems.read_quoted_string(orig_path),
+        orig_path = orig_path and str_util.read_quoted_string(orig_path),
     }
 end
 
@@ -120,31 +136,49 @@ end
 
 ---@param files string[]
 ---@param msg string
+---@param callback fun(err?: string)
 ---@return string? err
-function M.commit_cmd(files, msg)
-    local line = '"' .. table.concat(files, '" "') .. '"'
-    local add_cmd = "git add " .. line
-    vim.fn.system(add_cmd)
-    if vim.v.shell_error ~= 0 then
-        return "failed to stage files"
-    end
+function M.commit_cmd(files, msg, callback)
+    local cmd = "git"
 
-    vim.fn.system('git commit -m "' .. msg .. '"')
-    if vim.v.shell_error ~= 0 then
-        return "files are staged but failed to commit"
-    end
+    util.do_async_steps {
+        function(next_step)
+            local args = vim.list_extend({ "add" }, files)
+            util.run_cmd(cmd, args, next_step)
+        end,
+        function(next_step, result)
+            if result.code == 0 then
+                next_step()
+                return
+            end
+
+            local err = result.stderr
+            if err == "" then
+                err = "failed to stage files"
+            end
+
+            callback(err)
+        end,
+        function(next_step)
+            local args = { "commit", "-m", msg }
+            util.run_cmd(cmd, args, next_step)
+        end,
+        function(_, result)
+            if result.code == 0 then
+                callback()
+                return
+            end
+
+            local err = result.stderr
+            if err == "" then
+                err = "files are staged but failed to commit"
+            end
+
+            callback(err)
+        end,
+    }
 end
 
 -- -----------------------------------------------------------------------------
-
----@param pwd string
----@return string?
-function M.find_root(pwd)
-    if vim.fn.executable("git") == 0 then
-        return
-    end
-
-    return systems.find_root_by_keyfile(pwd, ".git")
-end
 
 return M

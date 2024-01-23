@@ -4,6 +4,7 @@ local systems = require "vcs-helper.systems"
 local commit = require "vcs-helper.commands.commit"
 local diff = require "vcs-helper.commands.diff"
 local status = require "vcs-helper.commands.status"
+local str_util = require "vcs-helper.util.str"
 
 local TabPage = tabpage.TabPage
 
@@ -38,7 +39,7 @@ M.tabpage = TabPage:new {
 local tp = M.tabpage
 
 function M.show_diff(args)
-    local filename = systems.read_quoted_string(args.fargs[1] or "")
+    local filename = str_util.read_quoted_string(args.fargs[1] or "")
     if filename == "" then
         M.show_status()
         return

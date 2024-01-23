@@ -1,9 +1,9 @@
 local panelpal = require "panelpal"
 
 local api = vim.api
-local systems = require "vcs-helper.systems"
+local sys_base = require "vcs-helper.systems.base"
 
-local DiffType = systems.DiffType
+local DiffType = sys_base.DiffType
 local UpdateMethod = panelpal.PanelContentUpdateMethod
 
 local M = {}

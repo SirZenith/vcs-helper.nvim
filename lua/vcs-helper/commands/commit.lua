@@ -1,6 +1,9 @@
-local systems = require "vcs-helper.systems"
 local panelpal = require "panelpal"
 local selection_panel = require "panelpal.panels.selection_panel"
+
+local systems = require "vcs-helper.systems"
+local util = require "vcs-helper.util"
+local path_util = require "vcs-helper.util.path"
 
 local SelectionPanel = selection_panel.SelectionPanel
 
@@ -22,34 +25,46 @@ local function on_confirm_selection(files)
         "",
     }
     for _, file in ipairs(files) do
-        lines[#lines + 1] = "- " .. systems.path_simplify(file)
+        lines[#lines + 1] = "- " .. path_util.path_simplify(file)
     end
 
-    panelpal.ask_for_confirmation_with_popup(lines, function(ok)
-        if not ok then
-            vim.notify("commit canceled.")
-            return
-        end
+    util.do_async_steps {
+        function(next_step)
+            panelpal.ask_for_confirmation_with_popup(lines, next_step)
+        end,
+        function(next_step, ok)
+            if not ok then
+                vim.notify("commit canceled.")
+            else
+                vim.ui.input({ prompt = "Commit message: " }, next_step)
+            end
+        end,
+        function(next_step, msg)
+            if
+                not msg
+                or msg == ""
+                or msg:match("%s+") == msg
+            then
+                vim.notify("empty message, commit abort.")
+                return
+            end
 
-        local msg = vim.fn.input("Commit message: ") or ""
-        if msg == "" or msg:match("%s+") == msg then
-            vim.notify("empty message, commit abort.")
-            return
-        end
-
-        ok = panelpal.ask_for_confirmation(("Your commit message is `%s`"):format(msg))
-        if not ok then
-            vim.notify("commit abort.")
-            return
-        end
-
-        local err = systems.commit(files, msg)
-        if err then
-            vim.notify(err)
-        else
-            vim.notify("commit complete")
-        end
-    end)
+            local prompt = ("Your commit message is `%s`"):format(msg)
+            local ok = panelpal.ask_for_confirmation(prompt)
+            if not ok then
+                vim.notify("commit abort.")
+            else
+                systems.commit(files, msg, next_step)
+            end
+        end,
+        function(err)
+            if err then
+                vim.notify(err, vim.log.levels.WARN)
+            else
+                vim.notify("commit complete")
+            end
+        end,
+    }
 end
 
 -- -----------------------------------------------------------------------------
@@ -102,7 +117,7 @@ function M.show()
         local local_status = r.local_status
 
         if local_status and local_status ~= " " then
-            records[#records+1] = r
+            records[#records + 1] = r
         end
     end
     M.records = records
@@ -110,7 +125,7 @@ function M.show()
     local options = {}
     for i = 1, #records do
         local r = records[i]
-        local path = systems.path_simplify(r.path)
+        local path = path_util.path_simplify(r.path)
         options[#options + 1] = r.local_status .. " " .. path
     end
 

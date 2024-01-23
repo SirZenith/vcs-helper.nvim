@@ -1,5 +1,7 @@
-local systems = require "vcs-helper.systems"
 local selection_panel = require "panelpal.panels.selection_panel"
+
+local systems = require "vcs-helper.systems"
+local path_util = require "vcs-helper.util.path"
 
 local SelectionPanel = selection_panel.SelectionPanel
 
@@ -37,7 +39,7 @@ function M.show()
     local options = {}
     for i = 1, #records do
         local r = records[i]
-        local path = systems.path_simplify(r.path)
+        local path = path_util.path_simplify(r.path)
         options[#options + 1] = r.local_status .. " " .. path
     end
 

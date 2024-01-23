@@ -1,11 +1,28 @@
-local systems = require "vcs-helper.systems"
+local sys_base = require "vcs-helper.systems.base"
+local path_util = require "vcs-helper.util.path"
+local str_util = require "vcs-helper.util.str"
 
-local Header = systems.Header
-local LineRangeCondition = systems.LineRangeCondition
+local Header = sys_base.Header
+local LineRangeCondition = str_util.LineRangeCondition
 
-local starts_with = systems.starts_with
+local starts_with = str_util.starts_with
 
+---@class vcs-helper.system.Svn : vsc-helper.VcsSystem
 local M = {}
+
+-- ----------------------------------------------------------------------------
+
+---@param pwd string
+---@return string?
+function M.find_root(pwd)
+    if vim.fn.executable("svn") == 0 then
+        return
+    end
+
+    return path_util.find_root_by_keyfile(pwd, ".svn")
+end
+
+-- -----------------------------------------------------------------------------
 
 M.file_diff_range_cond = LineRangeCondition:new(
     function(lines, index)
@@ -25,13 +42,12 @@ M.file_diff_range_cond = LineRangeCondition:new(
     end
 )
 
--- -----------------------------------------------------------------------------
-
+---@param root_path string # path of svn root
 ---@param diff_lines string[]
 ---@param st integer # starting index of file diff region.
----@param _ integer # ending index of file diff region (including).
+---@param ed integer # ending index of file diff region (including).
 ---@return string
-function M.get_file_path(diff_lines, st, _)
+function M.get_file_path(root_path, diff_lines, st, _)
     local line = diff_lines[st]
     return line:sub(#"Index: " + 1)
 end
@@ -55,26 +71,8 @@ end
 
 local STATUS_LINE_PATT = "([ ADMRCXI%?!~])([ MC])([ L])([ %+])([ S])([ KOTB])([ C]) (.+)"
 
----@enum SvnStatusPrefix
-local StatusPrefix = {
-    nochange = " ",
-    add = "A",
-    delete = "D",
-    modify = "M",
-    replace = "R",
-    conflict = "C",
-    external = "X",
-    ignore = "I",
-    untrack = "?",
-    missing = "!",
-    typechange = "~",
-    lock = "L",
-    staged = "+",
-    switch = "S"
-}
-
 ---@param line string
----@return StatusRecord?
+---@return vcs-helper.StatusRecord?
 function M.parse_status_line(line)
     local status, _, _, _, _, _, _, path = line:match(STATUS_LINE_PATT)
     if not (status and path) then return end
@@ -83,7 +81,7 @@ function M.parse_status_line(line)
 
     return {
         local_status = status,
-        path = systems.read_quoted_string(path),
+        path = str_util.read_quoted_string(path),
     }
 end
 
@@ -114,15 +112,5 @@ function M.commit_cmd(files, msg)
 end
 
 -- -----------------------------------------------------------------------------
-
----@param pwd string
----@return string?
-function M.find_root(pwd)
-    if vim.fn.executable("svn") == 0 then
-        return
-    end
-
-    return systems.find_root_by_keyfile(pwd, ".svn")
-end
 
 return M
