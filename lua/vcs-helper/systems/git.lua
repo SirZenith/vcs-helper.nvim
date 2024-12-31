@@ -56,7 +56,7 @@ M.file_diff_range_cond = LineRangeConditioin:new(
 ---@return string
 function M.get_file_path(root_path, diff_lines, st, _)
     local header_line = diff_lines[st + 3]
-    local prefixed_path = header_line:match(M.HEADER_NEW_FILE_PATT)
+    local prefixed_path = header_line:match(M.HEADER_NEW_FILE_PATT) ---@type string
 
     for i = 1, #prefixed_path do
         if prefixed_path:sub(i, i) == "/" then
@@ -64,6 +64,8 @@ function M.get_file_path(root_path, diff_lines, st, _)
             break
         end
     end
+
+    prefixed_path = prefixed_path:gsub("%s+$", "")
 
     local path = path_util.to_abs_path(root_path .. "/" .. prefixed_path)
     path = vim.fs.normalize(path)
@@ -123,7 +125,7 @@ end
 ---@param root string # root path of repository
 ---@return string
 function M.diff_cmd(root)
-    local diff = vim.fn.system("git diff " .. root)
+    local diff = vim.fn.system("git diff '" .. root .. "'")
     return diff
 end
 
